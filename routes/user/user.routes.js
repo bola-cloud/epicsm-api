@@ -14,6 +14,16 @@ router.get(
 )
 
 router.get(
+    '/firestore',
+    usersController.GetFirebaseUsers
+)
+
+router.get(
+    '/firestore/:id',
+    usersController.GetFirebaseUserById
+)
+
+router.get(
     '/:id',
     usersController.GetUserByID
 )
@@ -27,6 +37,21 @@ router.delete(
     '/:id',
     usersController.DeleteUser
 )
+
+router.delete(
+    '/firestore/:id',
+    usersController.DeleteFirebaseUser
+)
+
+// Ban (disable) a user
+router.put('/firestore/ban/:id', usersController.BanUser);
+
+// Unban (re-enable) a user
+router.put('/firestore/unban/:id', usersController.UnbanUser);
+
+
+router.put('/firestore/addbalance/:id', usersController.AddBalanceToUser);
+
 
 
 module.exports = router;
