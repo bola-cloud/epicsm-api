@@ -17,15 +17,14 @@ router.post(
     authenticationController.sendUser
 )
 
-router.get(
-    '/me',
-    authenticationController.getMyProfile,
-)
-
-
 router.post(
     '/logout',
     authenticationController.logout
+)
+
+router.get(
+    '/checktoken',
+    authenticationController.checkTokenExpiration
 )
 
 module.exports = router;

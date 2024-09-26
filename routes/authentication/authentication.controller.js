@@ -171,23 +171,23 @@ exports.getUserByToken = async (req, res) => {
   }
 };
 
+exports.checkTokenExpiration = (req, res, next) => {
+  const token = req.headers.authorization;
 
-exports.getMyProfile = async (req, res) => {
-  try {
-    const token = req.get("Authorization");
-    const currentUser = jwt_decode(token.replace('JWT ', ''));
-    user = await User.findById(currentUser._id);
-
-    // delete some fields for security
-    user = user.toObject();
-    delete user.password;
-    delete user.reset_code;
-    delete user.reset_code_date;
-
-    res.status(200).json(user);
-    return;
-  } catch (err) {
-    Boom.badImplementation(err);
-    return;
+  if (!token) {
+    return res.status(401).json({ message: "No token provided" });
   }
-}
+
+  const cleanToken = token.replace('JWT ', '');
+
+  try {
+    const decoded = jwt.verify(cleanToken, process.env.JWT_SECRET);
+    req.user = decoded;
+    next();
+  } catch (error) {
+    if (error.name === 'TokenExpiredError') {
+      return res.status(401).json({ message: "Token has expired" });
+    }
+    return res.status(401).json({ message: "Invalid token" });
+  }
+};
