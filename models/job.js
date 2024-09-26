@@ -66,9 +66,12 @@ const jobSchema = mongoose.Schema({
     },
     uid: {
         type: String,
-        default: uuidv4,
-        unique: true
-    }
+        required: true,
+    },
+    country: {
+        type: String,
+        default: "all",
+    },
 });
 
 

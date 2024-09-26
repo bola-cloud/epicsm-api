@@ -5,7 +5,17 @@ const authController = require('../authentication/authentication.controller')
 
 exports.CreateJob = async (req, res) => {
     try {
-        const newJob = new Job(req.body);
+        const isUser = await authController.getUserByToken(req, res);
+
+        if (!isUser) {
+            return res.status(401).json({ message: 'Unauthorized' });
+        }
+
+        const newJob = new Job({
+            ...req.body,
+            uid: isUser._id,
+            country: "all"
+        });
         const savedJob = await newJob.save();
         res.status(201).json(savedJob);
     } catch (error) {
@@ -63,7 +73,7 @@ exports.GetJobsLengthByPlatform = async (req, res) => {
         if (!isUser) {
             return res.status(401).json({ message: 'Unauthorized' });
         }
-        
+
         const facebookJobs = await Job.find({ platform: 'Facebook' });
         const instagramJobs = await Job.find({ platform: 'Instagram' });
 
@@ -109,6 +119,12 @@ exports.UpdateJob = async (req, res) => {
 
 exports.DeleteJob = async (req, res) => {
     try {
+        const isUser = await authController.getUserByToken(req, res);
+
+        if (!isUser) {
+            return res.status(401).json({ message: 'Unauthorized' });
+        }
+
         const deletedJob = await Job.findByIdAndDelete(req.params.id);
         if (!deletedJob) return res.status(404).json({ message: 'Job not found' });
         res.json({ message: 'Job deleted successfully' });
