@@ -8,7 +8,6 @@ const validator = new Validator();
 const loginSchema = require("../../schemas/authentification").loginSchema;
 
 
-
 exports.emailToLowerCase = (req, res, next) => {
   req.body.email = req.body.email.toLowerCase();
   next();
@@ -155,12 +154,23 @@ exports.logout = async (req, res) => {
 
 exports.getUserByToken = async (req, res) => {
   try {
-    const token = req.get("Authorization");
-    return jwt_decode(token.replace('JWT ', ''));
+    const token = req.headers.authorization;
+
+    if (!token) {
+      console.log("No token provided");
+      return null;
+    }
+
+    const cleanToken = token.replace('JWT ', '');
+    const decoded = jwt.verify(cleanToken, process.env.JWT_SECRET);
+
+    return decoded;
   } catch (error) {
-    return null
+    console.error("Error verifying token:", error);
+    return null;
   }
-}
+};
+
 
 exports.getMyProfile = async (req, res) => {
   try {

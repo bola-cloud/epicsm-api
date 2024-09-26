@@ -1,4 +1,5 @@
 const Job = require('../../models/job');
+const authController = require('../authentication/authentication.controller')
 
 
 
@@ -12,10 +13,31 @@ exports.CreateJob = async (req, res) => {
     }
 };
 
-
 exports.GetJobs = async (req, res) => {
     try {
+        const isUser = await authController.getUserByToken(req, res);
+
+        if (!isUser) {
+            return res.status(401).json({ message: 'Unauthorized' });
+        }
+
         const jobs = await Job.find().sort({ createdAt: -1 });
+        if (!jobs) return res.status(404).json({ message: 'No Job found' });
+        res.status(200).json(jobs);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+exports.GetLatestJobs = async (req, res) => {
+    try {
+        const isUser = await authController.getUserByToken(req, res);
+
+        if (!isUser) {
+            return res.status(401).json({ message: 'Unauthorized' });
+        }
+
+        const jobs = await Job.find().sort({ createdAt: -1 }).limit(5);
         if (!jobs) return res.status(404).json({ message: 'No Job found' });
         res.status(200).json(jobs);
     } catch (error) {
@@ -36,6 +58,12 @@ exports.GetJobsByPlatform = async (req, res) => {
 
 exports.GetJobsLengthByPlatform = async (req, res) => {
     try {
+        const isUser = await authController.getUserByToken(req, res);
+
+        if (!isUser) {
+            return res.status(401).json({ message: 'Unauthorized' });
+        }
+        
         const facebookJobs = await Job.find({ platform: 'Facebook' });
         const instagramJobs = await Job.find({ platform: 'Instagram' });
 
@@ -48,7 +76,6 @@ exports.GetJobsLengthByPlatform = async (req, res) => {
     }
 };
 
-
 exports.GetJobById = async (req, res) => {
     try {
         const job = await Job.findById(req.params.id);
@@ -58,7 +85,6 @@ exports.GetJobById = async (req, res) => {
         res.status(500).json({ message: error.message });
     }
 };
-
 
 exports.UpdateJob = async (req, res) => {
     try {
@@ -80,7 +106,6 @@ exports.UpdateJob = async (req, res) => {
         res.status(400).json({ message: error.message });
     }
 };
-
 
 exports.DeleteJob = async (req, res) => {
     try {

@@ -14,6 +14,11 @@ router.get(
 )
 
 router.get(
+    '/latest',
+    JobsController.GetLatestJobs
+)
+
+router.get(
     '/:platform',
     JobsController.GetJobsByPlatform
 )
@@ -24,7 +29,7 @@ router.get(
 )
 
 router.get(
-    '/:id',
+    '/user/:id',
     JobsController.GetJobById
 )
 

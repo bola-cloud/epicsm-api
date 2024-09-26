@@ -19,6 +19,11 @@ router.get(
 )
 
 router.get(
+    '/firestore/lastSignIn',
+    usersController.GetUsersByLastSignIn
+)
+
+router.get(
     '/firestore/length',
     usersController.GetFirebaseUsersLength
 )
