@@ -14,6 +14,16 @@ router.get(
 )
 
 router.get(
+    '/:platform',
+    JobsController.GetJobsByPlatform
+)
+
+router.get(
+    '/platform/length',
+    JobsController.GetJobsLengthByPlatform
+)
+
+router.get(
     '/:id',
     JobsController.GetJobById
 )

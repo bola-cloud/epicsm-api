@@ -19,6 +19,11 @@ router.get(
 )
 
 router.get(
+    '/firestore/length',
+    usersController.GetFirebaseUsersLength
+)
+
+router.get(
     '/firestore/:id',
     usersController.GetFirebaseUserById
 )
@@ -51,6 +56,8 @@ router.put('/firestore/unban/:id', usersController.UnbanUser);
 
 
 router.put('/firestore/addbalance/:id', usersController.AddBalanceToUser);
+
+router.put('/firestore/updateReward/:id', usersController.UpdateDailyReward);
 
 
 

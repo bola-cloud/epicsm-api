@@ -16,7 +16,33 @@ exports.CreateJob = async (req, res) => {
 exports.GetJobs = async (req, res) => {
     try {
         const jobs = await Job.find().sort({ createdAt: -1 });
+        if (!jobs) return res.status(404).json({ message: 'No Job found' });
         res.status(200).json(jobs);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+exports.GetJobsByPlatform = async (req, res) => {
+    try {
+        const { platform } = req.params;
+        const jobs = await Job.find({ platform }).sort({ createdAt: -1 });
+        if (!jobs) return res.status(404).json({ message: 'No Job found' });
+        res.status(200).json(jobs);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+exports.GetJobsLengthByPlatform = async (req, res) => {
+    try {
+        const facebookJobs = await Job.find({ platform: 'Facebook' });
+        const instagramJobs = await Job.find({ platform: 'Instagram' });
+
+        res.status(200).json({
+            facebook: facebookJobs.length,
+            instagram: instagramJobs.length
+        });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
