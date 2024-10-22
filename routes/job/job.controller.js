@@ -233,10 +233,9 @@ exports.mUpdateJobStatus = async (req, res) => {
 
 exports.mPing = async (req, res) => {
     try {
-        
         const savedPing = await Ping.findOneAndUpdate(
             { uid: req.body.uid }, // Search criteria based on unique field
-            { $set: {...req.body, createdAt: Date.now} }, // Data to update or insert
+            { $set: req.body }, // Data to update or insert
             { 
               upsert: true, // Create if doesn't exist
               new: true, // Return the updated/created document
