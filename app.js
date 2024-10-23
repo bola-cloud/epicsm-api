@@ -3,6 +3,9 @@ const bodyParser = require("body-parser")
 const Boom = require("boom")
 const cors = require('cors')
 
+const cron = require('node-cron')
+const Ping = require('./models/ping')
+
 
 // Create Express app
 const app = express();
@@ -44,6 +47,17 @@ app.use(function (req, res, next) {
       Boom.notFound("Route " + req.method + " " + req.path + " not found.")
     );
   next();
+});
+
+
+// configure corn job
+cron.schedule('*/15 * * * *', async () => {
+  try {
+    // Delete all documents
+    const result = await Ping.deleteMany({});
+  } catch (error) {
+    console.error('Error in cron job:', error);
+  }
 });
 
 module.exports = app;
