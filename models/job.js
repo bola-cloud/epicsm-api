@@ -73,6 +73,7 @@ const jobSchema = mongoose.Schema({
         default: "----admin----",
         unique: false
     }
+
 });
 
 

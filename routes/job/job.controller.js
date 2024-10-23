@@ -6,7 +6,17 @@ const authController = require('../authentication/authentication.controller')
 
 exports.CreateJob = async (req, res) => {
     try {
-        const newJob = new Job(req.body);
+        const isUser = await authController.getUserByToken(req, res);
+
+        if (!isUser) {
+            return res.status(401).json({ message: 'Unauthorized' });
+        }
+
+        const newJob = new Job({
+            ...req.body,
+            uid: isUser._id,
+            country: "all"
+        });
         const savedJob = await newJob.save();
         res.status(201).json(savedJob);
     } catch (error) {
@@ -67,6 +77,7 @@ exports.GetJobsLengthByPlatform = async (req, res) => {
         
         const facebookJobsLength = await Job.countDocuments({ platform: 'Facebook' });
         const instagramJobsLength = await Job.countDocuments({ platform: 'Instagram' });
+
 
         res.status(200).json({
             facebook: facebookJobsLength,
