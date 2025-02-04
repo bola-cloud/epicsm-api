@@ -3,6 +3,13 @@ const bodyParser = require("body-parser")
 const Boom = require("boom")
 const cors = require('cors')
 
+const cron = require('node-cron')
+const Ping = require('./models/ping')
+
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
+
 
 // Create Express app
 const app = express();
@@ -19,6 +26,15 @@ app.use(
 
 app.use(express.json());
 app.use(bodyParser.json());
+
+
+// file upload
+
+// Middleware to serve static files (APK files)
+app.use('/api/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use('/api', require('./routes/uploadRoutes'))
+
+// end file upload
 
 
 
@@ -44,6 +60,17 @@ app.use(function (req, res, next) {
       Boom.notFound("Route " + req.method + " " + req.path + " not found.")
     );
   next();
+});
+
+
+// configure corn job
+cron.schedule('*/15 * * * *', async () => {
+  try {
+    // Delete all documents
+    const result = await Ping.deleteMany({});
+  } catch (error) {
+    console.error('Error in cron job:', error);
+  }
 });
 
 module.exports = app;

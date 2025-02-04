@@ -209,8 +209,24 @@ exports.mGetJobsToLike = async (req, res) => {
     }
 };
 
+// exports.mIncrementJobLikesCount = async (req, res) => {
+//     try {
+//         const updatedJob = await Job.findOneAndUpdate(
+//             { jobId: req.body.jobId },
+//             { $inc: { likeCount: 1 } },
+//             { new: true, runValidators: true }
+//         );
+
+//         if (!updatedJob) return res.status(404).json({ message: 'Job not found' });
+//         res.status(200).json(updatedJob);
+//     } catch (error) {
+//         res.status(500).json({ message: error.message });
+//     }
+// };
+
 exports.mIncrementJobLikesCount = async (req, res) => {
     try {
+        // First, increment the likeCount
         const updatedJob = await Job.findOneAndUpdate(
             { jobId: req.body.jobId },
             { $inc: { likeCount: 1 } },
@@ -218,12 +234,27 @@ exports.mIncrementJobLikesCount = async (req, res) => {
         );
 
         if (!updatedJob) return res.status(404).json({ message: 'Job not found' });
+
+        // Check if likeCount has reached or exceeded maxCount
+        if (updatedJob.likeCount >= updatedJob.maxCount) {
+            // Update isLive to false
+            await Job.findOneAndUpdate(
+                { jobId: req.body.jobId },
+                { $set: { isLive: false } },
+                { runValidators: true }
+            );
+
+            // Fetch the updated job to include the isLive change in the response
+            const finalUpdatedJob = await Job.findOne({ jobId: req.body.jobId });
+            return res.status(200).json(finalUpdatedJob);
+        }
+
+        // If likeCount hasn't reached maxCount, return the initially updated job
         res.status(200).json(updatedJob);
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
 };
-
 
 exports.mUpdateJobStatus = async (req, res) => {
     try {
