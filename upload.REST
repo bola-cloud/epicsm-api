@@ -1,12 +1,12 @@
 ### Upload APK File
-POST http://localhost:3001/upload-apk
+POST https://api.epicsm.goviral.ma/api/upload-apk
 Content-Type: multipart/form-data; boundary=MyBoundary
 
 --MyBoundary
 Content-Disposition: form-data; name="apk"; filename="app.apk"
 Content-Type: application/vnd.android.package-archive
 
-< /Users/abdellatif/development/workspace/epicsm/build/app/outputs/flutter-apk/flyker-02-04.apk
+< /Users/abdellatif/development/workspace/epicsm/build/app/outputs/flutter-apk/new-version-test.apk
 --MyBoundary
 Content-Disposition: form-data; name="version"
 
@@ -18,4 +18,4 @@ Bug fixes and performance improvements
 --MyBoundary--
 
 ### Check for Updates
-GET http://localhost:3001/check-update
+GET https://api.epicsm.goviral.ma/api/check-update

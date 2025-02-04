@@ -21,7 +21,10 @@ const storage = multer.diskStorage({
   },
 });
 
-const upload = multer({ storage });
+const upload = multer({
+    storage, 
+    limits: { fileSize: 100 * 1024 * 1024 }, // 100 MB file size limit
+});
 
 // Route for uploading APK file (Admin only)
 router.post('/upload-apk', upload.single('apk'), (req, res) => {
