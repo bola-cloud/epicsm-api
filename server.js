@@ -1,5 +1,6 @@
 // Loads environment variables from a .env file into process.env
 const https = require('https');
+const http = require('http');
 const fs = require('fs');
 const dotenv = require('dotenv');
 const result = dotenv.config();
@@ -20,13 +21,14 @@ const logger = require("./logging/logger");
 // -------------------------------------------------------
 
 // Load SSL certificates
-const options = {
-  key: fs.readFileSync('/etc/letsencrypt/live/api.epicsm.goviral.ma/privkey.pem'),
-  cert: fs.readFileSync('/etc/letsencrypt/live/api.epicsm.goviral.ma/fullchain.pem')
-};
+// const options = {
+//   key: fs.readFileSync('/etc/letsencrypt/live/api.epicsm.goviral.ma/privkey.pem'),
+//   cert: fs.readFileSync('/etc/letsencrypt/live/api.epicsm.goviral.ma/fullchain.pem')
+// };
 
 // Create HTTPS server
-const server = https.createServer(options, app);
+// const server = https.createServer(options, app);
+const server = http.createServer(app);
 
 db.instance()
 
