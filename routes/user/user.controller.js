@@ -218,20 +218,18 @@ exports.GetFirebaseUsersLength = async (req, res) => {
         }
 
         const usersRef = db.collection('users');
-        const snapshot = await usersRef.get();
 
-        if (snapshot.empty) {
+        const totalCountSnapshot = await usersRef.count().get();
+        const totalUsers = totalCountSnapshot.data().count;
+
+        if (totalUsers === 0) {
             return res.status(404).json({ message: 'No users found' });
         }
 
-        const users = snapshot.docs.map((doc) => ({
-            id: doc.id,
-            ...doc.data(),
-        }));
-
-        res.status(200).json(users.length);
+        res.status(200).json(totalUsers);
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        console.error('Error getting users count:', error);
+        res.status(500).json({ message: 'Internal server error' });
     }
 };
 
