@@ -56,113 +56,129 @@ exports.CreateUser = async (req, res) => {
 };
 
 // Get all users from firebase
+// Get Users Endpoint - Clean and focused on pagination
 exports.GetFirebaseUsers = async (req, res) => {
     try {
         const isUser = await authController.getUserByToken(req, res);
-
         if (!isUser) {
             return res.status(401).json({ message: 'Unauthorized' });
         }
 
-        const usersRef = db.collection('users');
-        const { page = 1, limit = 10, searchQuery = "" } = req.query;
-
-        const pageNumber = parseInt(page, 10);
+        const { page = 1, limit = 10 } = req.query;
         const pageSize = parseInt(limit, 10);
+        const pageNumber = parseInt(page, 10);
 
-        const offset = (pageNumber - 1) * pageSize;
+        const usersRef = db.collection('users');
 
-        let users = [];
-        let query = usersRef;
+        // Get total count for pagination
+        const totalCountSnapshot = await usersRef.count().get();
+        const totalUsers = totalCountSnapshot.data().count;
 
-        if (searchQuery) {
-            normalizeNames();
-            const lowerCaseSearchQuery = searchQuery.toLowerCase().replace(/\s+/g, '');
+        // Get paginated users
+        const query = usersRef
+            .orderBy('created', 'desc')
+            .limit(pageSize)
+            .offset((pageNumber - 1) * pageSize);
 
-            try {
-                const idSnapshot = await usersRef.doc(searchQuery).get();
-                if (idSnapshot.exists) {
-                    users.push({ id: idSnapshot.id, ...idSnapshot.data() });
-                }
-            } catch (err) {
-                console.error("Error querying by ID: ", err);
-            }
+        const snapshot = await query.get();
+        const users = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data(),
+        }));
 
-            let emailQuery = usersRef
-                .where('email', '>=', lowerCaseSearchQuery)
-                .where('email', '<=', lowerCaseSearchQuery + '\uf8ff')
-                .orderBy('email')
-                .limit(pageSize);
-
-            const emailSnapshot = await emailQuery.get();
-            const emailResults = emailSnapshot.docs.map((doc) => ({
-                id: doc.id,
-                ...doc.data(),
-            }));
-            users = [...users, ...emailResults];
-
-            const searchTerms = lowerCaseSearchQuery.split(" ");
-            if (searchTerms.length > 1) {
-                const nameQuery = usersRef
-                    .where('nameNormalized', '>=', searchTerms.join(''))
-                    .where('nameNormalized', '<=', searchTerms.join('') + '\uf8ff')
-                    .orderBy('nameNormalized')
-                    .limit(pageSize);
-
-                const nameSnapshot = await nameQuery.get();
-                const nameResults = nameSnapshot.docs.map((doc) => ({
-                    id: doc.id,
-                    ...doc.data(),
-                }));
-                users = [...users, ...nameResults];
-            } else {
-                const singleNameQuery = usersRef
-                    .where('nameNormalized', '>=', lowerCaseSearchQuery)
-                    .where('nameNormalized', '<=', lowerCaseSearchQuery + '\uf8ff')
-                    .orderBy('nameNormalized')
-                    .limit(pageSize);
-
-                const singleNameSnapshot = await singleNameQuery.get();
-                const singleNameResults = singleNameSnapshot.docs.map((doc) => ({
-                    id: doc.id,
-                    ...doc.data(),
-                }));
-                users = [...users, ...singleNameResults];
-            }
-
-            users = users.filter((v, i, a) => a.findIndex(t => (t.id === v.id)) === i);
-        } else {
-            query = query.orderBy('id').limit(pageSize);
-
-            if (offset > 0) {
-                const prevSnapshot = await usersRef.orderBy('id').limit(offset).get();
-                const lastVisible = prevSnapshot.docs[prevSnapshot.docs.length - 1];
-                query = query.startAfter(lastVisible);
-            }
-
-            const snapshot = await query.get();
-
-            users = snapshot.docs.map((doc) => ({
-                id: doc.id,
-                ...doc.data(),
-            }));
-        }
-
-        const totalSnapshot = await usersRef.get();
-        const totalUsers = totalSnapshot.size;
-
-        res.status(200).json({
+        return res.status(200).json({
+            users,
             page: pageNumber,
             limit: pageSize,
             totalPages: Math.ceil(totalUsers / pageSize),
             totalUsers,
-            users,
         });
+
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        console.error('Error fetching users:', error);
+        return res.status(500).json({
+            message: 'Failed to fetch users',
+            error: error.message
+        });
     }
 };
 
+// Search Users Endpoint - Dedicated to search functionality
+exports.SearchFirebaseUsers = async (req, res) => {
+    try {
+        const isUser = await authController.getUserByToken(req, res);
+        if (!isUser) {
+            return res.status(401).json({ message: 'Unauthorized' });
+        }
+
+        const { query = "", page = 1, limit = 10 } = req.query;
+        const pageSize = parseInt(limit, 10);
+        const pageNumber = parseInt(page, 10);
+
+        if (!query.trim()) {
+            return res.status(400).json({
+                message: 'Search query is required'
+            });
+        }
+
+        const usersRef = db.collection('users');
+        const searchTerm = query.toLowerCase().trim();
+
+        // Composite query for both email and name
+        const [emailSnapshot, nameSnapshot] = await Promise.all([
+            // Search by email
+            usersRef
+                .where('email', '>=', searchTerm)
+                .where('email', '<=', searchTerm + '\uf8ff')
+                .orderBy('email')
+                .get(),
+
+            // Search by normalized name
+            usersRef
+                .where('nameNormalized', '>=', searchTerm)
+                .where('nameNormalized', '<=', searchTerm + '\uf8ff')
+                .orderBy('nameNormalized')
+                .get()
+        ]);
+
+        // Combine and deduplicate results
+        const emailResults = emailSnapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+        }));
+
+        const nameResults = nameSnapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+        }));
+
+        // Deduplicate results based on user ID
+        const combinedResults = [...emailResults, ...nameResults];
+        const uniqueResults = Array.from(
+            new Map(combinedResults.map(item => [item.id, item])).values()
+        );
+
+        // Manual pagination of results
+        const startIndex = (pageNumber - 1) * pageSize;
+        const endIndex = startIndex + pageSize;
+        const paginatedResults = uniqueResults.slice(startIndex, endIndex);
+
+        return res.status(200).json({
+            users: paginatedResults,
+            page: pageNumber,
+            limit: pageSize,
+            totalPages: Math.ceil(uniqueResults.length / pageSize),
+            totalUsers: uniqueResults.length,
+        });
+
+    } catch (error) {
+        console.error('Error searching users:', error);
+        return res.status(500).json({
+            message: 'Failed to search users',
+            error: error.message
+        });
+    }
+};
 // Get Users ordered by last sign in
 exports.GetUsersByLastSignIn = async (req, res) => {
     try {

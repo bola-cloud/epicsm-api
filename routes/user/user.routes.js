@@ -18,6 +18,8 @@ router.get(
     usersController.GetFirebaseUsers
 )
 
+router.get('/firestore/search', usersController.SearchFirebaseUsers);
+
 router.get(
     '/firestore/lastSignIn',
     usersController.GetUsersByLastSignIn
