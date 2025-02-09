@@ -10,7 +10,7 @@ Content-Type: application/vnd.android.package-archive
 --MyBoundary
 Content-Disposition: form-data; name="version"
 
-v1.0.1
+v1.0.2
 --MyBoundary
 Content-Disposition: form-data; name="releaseNotes"
 
