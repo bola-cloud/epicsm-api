@@ -6,15 +6,15 @@ const statistique = require('../../models/statistique')
 // Record version usage
 exports.RecordVersion = async (req, res) => {
     try {
-        const userId = req.headers['user-id'];
-        const version = req.headers['app-version'];
-        const webview = req.headers['webview-version'];
-        const country = req.headers['country'];
-        const connection = req.headers['connection'];
+        const userId = req.body['user-id'];
+        const version = req.body['app-version'];
+        const webview = req.body['webview-version'];
+        const country = req.body['country'];
+        const connection = req.body['connection'];
 
         if (!userId || !version) {
             return res.status(400).json({
-                message: 'Missing required headers: user-id and app-version'
+                message: 'Missing required data: user-id and app-version'
             });
         }
 
