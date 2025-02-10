@@ -32,6 +32,10 @@ app.use(bodyParser.json());
 // file upload
 
 // Middleware to serve static files (APK files)
+app.use('/api/v2/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use('/api/v2', require('./routes/uploadRoutes'))
+
+// old routes still in use for 10 days
 app.use('/api/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use('/api', require('./routes/uploadRoutes'))
 
@@ -51,7 +55,7 @@ const httpLogger = require("./logging/http-logger");
 app.use(httpLogger)
 
 // API resources routes
-app.use("/api", apiRoutes)
+app.use("/api/v2", apiRoutes)
 
 
 // API route not found handler
