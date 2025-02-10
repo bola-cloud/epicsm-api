@@ -1,3 +1,4 @@
+const Log = require('../../models/log');
 const statistique = require('../../models/statistique')
 
 
@@ -181,3 +182,62 @@ exports.GetUserVersion = async (req, res) => {
         res.status(500).json({ message: 'Error fetching user version' });
     }
 };
+
+
+// Logs
+exports.CreateLog = async (req, res) => {
+    try {
+        const { userId, type, content } = req.body;
+
+        const log = new Log({
+            userId,
+            type,
+            content,
+            timestamp: new Date()
+        });
+
+        await log.save();
+        res.status(201).json(log);
+    } catch (error) {
+        res.status(500).json({ error: 'Error creating log entry' });
+    }
+}
+
+exports.GetLogs = async (req, res) => {
+    try {
+        const {
+            page = 1,
+            limit = 10,
+            userId,
+            type,
+            startDate,
+            endDate
+        } = req.query;
+
+        const query = {};
+
+        if (userId) query.userId = userId;
+        if (type) query.type = type;
+        if (startDate || endDate) {
+            query.timestamp = {};
+            if (startDate) query.timestamp.$gte = new Date(startDate);
+            if (endDate) query.timestamp.$lte = new Date(endDate);
+        }
+
+        const logs = await Log.find(query)
+            .sort({ timestamp: -1 })
+            .skip((page - 1) * limit)
+            .limit(parseInt(limit));
+
+        const total = await Log.countDocuments(query);
+
+        res.json({
+            logs,
+            total,
+            pages: Math.ceil(total / limit),
+            currentPage: parseInt(page)
+        });
+    } catch (error) {
+        res.status(500).json({ error: 'Error fetching logs' });
+    }
+}

@@ -35,4 +35,12 @@ router.get(
 )
 
 
+//Logs
+
+// Add new log
+router.post('/logs', StatistiquesController.CreateLog);
+
+// Get logs with pagination and filtering
+router.get('/logs', StatistiquesController.GetLogs);
+
 module.exports = router;
