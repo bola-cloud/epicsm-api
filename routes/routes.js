@@ -17,6 +17,7 @@ router.use('/', require("./authentication/authentication.routes"));
 router.use('/users', require("./user/user.routes"));
 router.use('/accounts', require("./socialmedia/socialmedia.routes"));
 router.use('/jobs', require("./job/job.routes"));
+router.use('/stats', require("./statistique/statistique.routes"));
 
 
 // -------------------------------------------------------
