@@ -2,6 +2,8 @@ const User = require('../../models/user')
 const authController = require('../authentication/authentication.controller')
 const admin = require("firebase-admin");
 const serviceAccount = require('../../utils/epicsm-app-firebase-adminsdk-a6csy-58907dbb09.json');
+const { Parser } = require("json2csv");
+
 
 // Initialize Firebase Admin SDK
 admin.initializeApp({
@@ -462,5 +464,38 @@ exports.UpdateDailyReward = async (req, res) => {
     } catch (error) {
         console.error('Error adding balance:', error);
         res.status(500).json({ message: 'Internal Server Error' });
+    }
+};
+
+// export all users
+exports.ExportFirebaseUsersCSV = async (req, res) => {
+    try {
+        const isUser = await authController.getUserByToken(req, res);
+        if (!isUser) {
+            return res.status(401).json({ message: 'Unauthorized 22' });
+        }
+
+        const usersRef = db.collection("users");
+        const snapshot = await usersRef.get();
+
+        const users = snapshot.docs.map((doc) => ({
+            id: doc.id,
+            ...doc.data(),
+        }));
+
+        if (users.length === 0) {
+            return res.status(404).json({ message: "No users found" });
+        }
+
+        const fields = Object.keys(users[0]);
+        const json2csvParser = new Parser({ fields });
+        const csv = json2csvParser.parse(users);
+
+        res.setHeader("Content-Type", "text/csv");
+        res.setHeader("Content-Disposition", "attachment; filename=users.csv");
+        res.status(200).send(csv);
+    } catch (error) {
+        console.error("Error exporting users:", error);
+        res.status(500).json({ message: "Failed to export users", error: error.message });
     }
 };

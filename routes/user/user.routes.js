@@ -66,6 +66,8 @@ router.put('/firestore/addbalance/:id', usersController.AddBalanceToUser);
 
 router.put('/firestore/updateReward/:id', usersController.UpdateDailyReward);
 
+router.get('/users/export', usersController.ExportFirebaseUsersCSV);
+
 
 
 module.exports = router;
