@@ -472,22 +472,21 @@ exports.ExportFirebaseUsersCSV = async (req, res) => {
     try {
         const isUser = await authController.getUserByToken(req, res);
         if (!isUser) {
-            return res.status(401).json({ message: 'Unauthorized 22' });
+            return res.status(401).json({ message: 'Unauthorized' });
         }
 
         const usersRef = db.collection("users");
         const snapshot = await usersRef.get();
 
         const users = snapshot.docs.map((doc) => ({
-            id: doc.id,
-            ...doc.data(),
+            email: doc.data().email, // Extract only the email field
         }));
 
         if (users.length === 0) {
             return res.status(404).json({ message: "No users found" });
         }
 
-        const fields = Object.keys(users[0]);
+        const fields = ["email"];
         const json2csvParser = new Parser({ fields });
         const csv = json2csvParser.parse(users);
 
