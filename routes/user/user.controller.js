@@ -498,3 +498,35 @@ exports.ExportFirebaseUsersCSV = async (req, res) => {
         res.status(500).json({ message: "Failed to export users", error: error.message });
     }
 };
+
+// get banned users
+exports.GetBannedUsers = async (req, res) => {
+    try {
+        const isUser = await authController.getUserByToken(req, res);
+        if (!isUser) {
+            return res.status(401).json({ message: 'Unauthorized' });
+        }
+
+        const usersRef = admin.firestore().collection('users');
+        const bannedSnapshot = await usersRef
+            .where('banned', '==', true)
+            .get();
+
+        const bannedUsers = [];
+        bannedSnapshot.forEach(doc => {
+            bannedUsers.push({
+                id: doc.id,
+                ...doc.data(),
+            });
+        });
+
+        return res.status(200).json(bannedUsers);
+
+    } catch (error) {
+        console.error('Error fetching banned users:', error);
+        return res.status(500).json({
+            message: 'Error fetching banned users',
+            error: error.message
+        });
+    }
+};

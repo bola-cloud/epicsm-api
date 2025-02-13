@@ -1,5 +1,6 @@
 const Job = require('../../models/job');
 const Ping = require('../../models/ping');
+const Blocked = require('../../models/blocked');
 const authController = require('../authentication/authentication.controller')
 
 
@@ -74,7 +75,7 @@ exports.GetJobsLengthByPlatform = async (req, res) => {
         if (!isUser) {
             return res.status(401).json({ message: 'Unauthorized' });
         }
-        
+
         const facebookJobsLength = await Job.countDocuments({ platform: 'Facebook' });
         const instagramJobsLength = await Job.countDocuments({ platform: 'Instagram' });
 
@@ -95,7 +96,7 @@ exports.GetOnlineUsersLength = async (req, res) => {
         if (!isUser) {
             return res.status(401).json({ message: 'Unauthorized' });
         }
-        
+
         const onlineUsers = await Ping.countDocuments();
 
         res.status(200).json({
@@ -163,6 +164,19 @@ exports.DeleteJob = async (req, res) => {
 
 exports.mCreateJob = async (req, res) => {
     try {
+        const { uid } = req.body;
+
+        if (!uid) {
+            return res.status(400).json({ message: 'User ID is required' });
+        }
+
+        // Check if user is in blockedAP
+        const blockedData = await Blocked.findOne();
+        if (blockedData && blockedData.blockedAP.includes(uid)) {
+            // Return empty response for blocked users
+            return res.status(200).json({});
+        }
+
         const newJob = new Job(req.body);
         const savedJob = await newJob.save();
         res.status(201).json(savedJob);
@@ -185,7 +199,7 @@ exports.mGetMyJobs = async (req, res) => {
 exports.mDeleteJob = async (req, res) => {
     try {
         const deletedJob = await Job.findOneAndUpdate(
-            { jobId : req.params.jobId},
+            { jobId: req.params.jobId },
             { ...req.body, status: "Deleted", isLive: false },
             { new: true, runValidators: true }
         );
@@ -198,10 +212,12 @@ exports.mDeleteJob = async (req, res) => {
 
 exports.mGetJobsToLike = async (req, res) => {
     try {
-        const jobs = await Job.find({ status: "Active", isLive: true, $or: [
-            { country: req.params.country },
-            { country: "all" }
-          ], $expr: { $lt: ["$likeCount", "$maxCount"] } }).sort({ createdAt: -1 });
+        const jobs = await Job.find({
+            status: "Active", isLive: true, $or: [
+                { country: req.params.country },
+                { country: "all" }
+            ], $expr: { $lt: ["$likeCount", "$maxCount"] }
+        }).sort({ createdAt: -1 });
         if (!jobs) return res.status(404).json({ message: 'No Job found' });
         res.status(200).json(jobs);
     } catch (error) {
@@ -226,9 +242,22 @@ exports.mGetJobsToLike = async (req, res) => {
 
 exports.mIncrementJobLikesCount = async (req, res) => {
     try {
+        const { jobId, uid } = req.body;
+
+        if (!uid) {
+            return res.status(400).json({ message: 'User ID is required' });
+        }
+
+        // Check if user is in blockedPL
+        const blockedData = await Blocked.findOne();
+        if (blockedData && blockedData.blockedPL.includes(uid)) {
+            // Return empty response for blocked users
+            return res.status(200).json({});
+        }
+
         // First, increment the likeCount
         const updatedJob = await Job.findOneAndUpdate(
-            { jobId: req.body.jobId },
+            { jobId: jobId },
             { $inc: { likeCount: 1 } },
             { new: true, runValidators: true }
         );
@@ -239,13 +268,13 @@ exports.mIncrementJobLikesCount = async (req, res) => {
         if (updatedJob.likeCount >= updatedJob.maxCount) {
             // Update isLive to false
             await Job.findOneAndUpdate(
-                { jobId: req.body.jobId },
+                { jobId: jobId },
                 { $set: { isLive: false } },
                 { runValidators: true }
             );
 
             // Fetch the updated job to include the isLive change in the response
-            const finalUpdatedJob = await Job.findOne({ jobId: req.body.jobId });
+            const finalUpdatedJob = await Job.findOne({ jobId: jobId });
             return res.status(200).json(finalUpdatedJob);
         }
 
@@ -262,7 +291,7 @@ exports.mUpdateJobStatus = async (req, res) => {
         const newStatus = isLive ? "Active" : "Off";
 
         const deletedJob = await Job.findOneAndUpdate(
-            { jobId : req.params.jobId},
+            { jobId: req.params.jobId },
             { ...req.body, status: newStatus, isLive: isLive },
             { new: true, runValidators: true }
         );
@@ -278,12 +307,12 @@ exports.mPing = async (req, res) => {
         const savedPing = await Ping.findOneAndUpdate(
             { uid: req.body.uid }, // Search criteria based on unique field
             { $set: req.body }, // Data to update or insert
-            { 
-              upsert: true, // Create if doesn't exist
-              new: true, // Return the updated/created document
-              runValidators: true // Run model validations on update
+            {
+                upsert: true, // Create if doesn't exist
+                new: true, // Return the updated/created document
+                runValidators: true // Run model validations on update
             }
-          );
+        );
         res.status(200).json(savedPing);
     } catch (error) {
         res.status(500).json({ message: error.message });

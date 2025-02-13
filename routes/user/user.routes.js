@@ -68,6 +68,8 @@ router.put('/firestore/updateReward/:id', usersController.UpdateDailyReward);
 
 router.get('/users/export', usersController.ExportFirebaseUsersCSV);
 
+router.get('/users/banned', usersController.GetBannedUsers);
+
 
 
 module.exports = router;

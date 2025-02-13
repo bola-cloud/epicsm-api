@@ -18,7 +18,8 @@ router.use('/users', require("./user/user.routes"));
 router.use('/accounts', require("./socialmedia/socialmedia.routes"));
 router.use('/jobs', require("./job/job.routes"));
 router.use('/stats', require("./statistique/statistique.routes"));
-
+router.use('/settings', require("./settings/settings.routes"));
+router.use('/blocked', require("./blocked/blocked.routes"));
 
 // -------------------------------------------------------
 // Protected routes
@@ -28,3 +29,4 @@ router.use('/stats', require("./statistique/statistique.routes"));
 
 
 module.exports = router;
+
