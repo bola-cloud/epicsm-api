@@ -164,7 +164,7 @@ exports.DeleteJob = async (req, res) => {
 
 exports.mCreateJob = async (req, res) => {
     try {
-        const { uid } = req.params;
+        const { uid } = req.body;
 
         if (!uid) {
             return res.status(400).json({ message: 'User ID is required' });

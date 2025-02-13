@@ -51,7 +51,7 @@ router.delete(
 // Routes for mobile app
 // add job
 router.post(
-    '/mobile/create/:uid',
+    '/mobile/create',
     JobsController.mCreateJob
 )
 // get my jobs
