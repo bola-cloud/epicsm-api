@@ -164,7 +164,7 @@ exports.DeleteJob = async (req, res) => {
 
 exports.mCreateJob = async (req, res) => {
     try {
-        const { uid } = req.body;
+        const { uid } = req.params;
 
         if (!uid) {
             return res.status(400).json({ message: 'User ID is required' });
@@ -212,7 +212,7 @@ exports.mDeleteJob = async (req, res) => {
 
 exports.mGetJobsToLike = async (req, res) => {
     try {
-        const { uid } = req.body;
+        const { uid } = req.params;
 
         if (!uid) {
             return res.status(400).json({ message: 'User ID is required' });

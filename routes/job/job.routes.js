@@ -51,7 +51,7 @@ router.delete(
 // Routes for mobile app
 // add job
 router.post(
-    '/mobile/create',
+    '/mobile/create/:uid',
     JobsController.mCreateJob
 )
 // get my jobs
@@ -74,7 +74,7 @@ router.delete(
 
 // get jobs to like
 router.get(
-    '/mobile/jobsToLike/:country',
+    '/mobile/jobsToLike/:country/:uid',
     JobsController.mGetJobsToLike
 )
 // increment like count
