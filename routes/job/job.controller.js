@@ -212,6 +212,19 @@ exports.mDeleteJob = async (req, res) => {
 
 exports.mGetJobsToLike = async (req, res) => {
     try {
+        const { uid } = req.body;
+
+        if (!uid) {
+            return res.status(400).json({ message: 'User ID is required' });
+        }
+
+        // Check if user is in blockedPL
+        const blockedData = await Blocked.findOne();
+        if (blockedData && blockedData.blockedPL.includes(uid)) {
+            // Return empty response for blocked users
+            return res.status(200).json({});
+        }
+
         const jobs = await Job.find({
             status: "Active", isLive: true, $or: [
                 { country: req.params.country },
@@ -242,18 +255,7 @@ exports.mGetJobsToLike = async (req, res) => {
 
 exports.mIncrementJobLikesCount = async (req, res) => {
     try {
-        const { jobId, uid } = req.body;
-
-        if (!uid) {
-            return res.status(400).json({ message: 'User ID is required' });
-        }
-
-        // Check if user is in blockedPL
-        const blockedData = await Blocked.findOne();
-        if (blockedData && blockedData.blockedPL.includes(uid)) {
-            // Return empty response for blocked users
-            return res.status(200).json({});
-        }
+        const { jobId } = req.body;
 
         // First, increment the likeCount
         const updatedJob = await Job.findOneAndUpdate(
