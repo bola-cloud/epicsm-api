@@ -17,7 +17,10 @@ exports.getSettings = async (req, res) => {
                 executionMethod: '',
                 executionMethods: [],
                 reportErrors: false,
-                reportHtml: false
+                reportHtml: false,
+                mimicScroll: false,
+                rt: 0,
+                rrt: 0,
             });
         }
 
@@ -27,17 +30,19 @@ exports.getSettings = async (req, res) => {
     }
 };
 
-// Update settings
 exports.updateSettings = async (req, res) => {
     try {
-        const { executionMethod, reportErrors, reportHtml } = req.body;
+        const { executionMethod, reportErrors, reportHtml, mimicScroll, rt, rrt } = req.body;
 
         const settings = await Settings.findOneAndUpdate(
             {},
             {
                 executionMethod,
                 reportErrors,
-                reportHtml
+                reportHtml,
+                mimicScroll,
+                rt,
+                rrt
             },
             { new: true, upsert: true }
         );
