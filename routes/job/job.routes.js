@@ -48,6 +48,11 @@ router.delete(
     JobsController.DeleteJob
 )
 
+router.delete(
+    '/',
+    JobsController.BulkDeleteJobs
+)
+
 // Routes for mobile app
 // add job
 router.post(

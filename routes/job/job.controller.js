@@ -160,6 +160,35 @@ exports.DeleteJob = async (req, res) => {
     }
 };
 
+exports.BulkDeleteJobs = async (req, res) => {
+    try {
+        const isUser = await authController.getUserByToken(req, res);
+
+        if (!isUser) {
+            return res.status(401).json({ message: 'Unauthorized' });
+        }
+
+        const { jobIds } = req.body;
+
+        if (!jobIds || !Array.isArray(jobIds) || jobIds.length === 0) {
+            return res.status(400).json({ message: 'No job IDs provided' });
+        }
+
+        const deleteResults = await Job.deleteMany({ _id: { $in: jobIds } });
+
+        if (deleteResults.deletedCount === 0) {
+            return res.status(404).json({ message: 'No jobs found to delete' });
+        }
+
+        res.json({
+            message: 'Jobs deleted successfully',
+            deletedCount: deleteResults.deletedCount
+        });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
 // Mobile API
 
 exports.mCreateJob = async (req, res) => {
