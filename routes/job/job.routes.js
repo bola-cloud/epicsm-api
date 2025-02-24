@@ -53,6 +53,12 @@ router.delete(
     JobsController.BulkDeleteJobs
 )
 
+router.get(
+    '/search/search',
+    JobsController.SearchJobs
+)
+
+
 // Routes for mobile app
 // add job
 router.post(

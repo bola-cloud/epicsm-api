@@ -28,14 +28,32 @@ exports.CreateJob = async (req, res) => {
 exports.GetJobs = async (req, res) => {
     try {
         const isUser = await authController.getUserByToken(req, res);
-
         if (!isUser) {
             return res.status(401).json({ message: 'Unauthorized' });
         }
 
-        const jobs = await Job.find().sort({ createdAt: -1 });
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+        const skip = (page - 1) * limit;
+
+        const totalCount = await Job.countDocuments();
+
+        const jobs = await Job.find()
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(limit);
+
         if (!jobs) return res.status(404).json({ message: 'No Job found' });
-        res.status(200).json(jobs);
+
+        res.status(200).json({
+            jobs,
+            pagination: {
+                total: totalCount,
+                page,
+                limit,
+                totalPages: Math.ceil(totalCount / limit)
+            }
+        });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -186,6 +204,88 @@ exports.BulkDeleteJobs = async (req, res) => {
         });
     } catch (error) {
         res.status(500).json({ message: error.message });
+    }
+};
+
+exports.SearchJobs = async (req, res) => {
+    try {
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+        const searchQuery = req.query.q || '';
+
+        const skipDocs = (page - 1) * limit;
+
+        const searchCriteria = {
+            $or: [
+                { jobId: { $regex: searchQuery, $options: 'i' } },
+                { platform: { $regex: searchQuery, $options: 'i' } },
+                { status: { $regex: searchQuery, $options: 'i' } },
+                { linkTypeName: { $regex: searchQuery, $options: 'i' } },
+                { uid: { $regex: searchQuery, $options: 'i' } },
+                { country: { $regex: searchQuery, $options: 'i' } },
+                { type: { $regex: searchQuery, $options: 'i' } }
+            ]
+        };
+
+        if (!isNaN(searchQuery)) {
+            searchCriteria.$or.push(
+                { likeCount: parseInt(searchQuery) },
+                { maxCount: parseInt(searchQuery) }
+            );
+        }
+
+        const dateQuery = new Date(searchQuery);
+        if (!isNaN(dateQuery.getTime())) {
+            const startOfDay = new Date(dateQuery.setHours(0, 0, 0, 0));
+            const endOfDay = new Date(dateQuery.setHours(23, 59, 59, 999));
+
+            searchCriteria.$or.push(
+                {
+                    datePublished: {
+                        $gte: startOfDay,
+                        $lte: endOfDay
+                    }
+                },
+                {
+                    createdAt: {
+                        $gte: startOfDay,
+                        $lte: endOfDay
+                    }
+                }
+            );
+        }
+
+        const jobs = await Job.find(searchCriteria)
+            .sort({ createdAt: -1 })
+            .skip(skipDocs)
+            .limit(limit);
+
+        const total = await Job.countDocuments(searchCriteria);
+
+        const totalPages = Math.ceil(total / limit);
+        const hasNextPage = page < totalPages;
+        const hasPrevPage = page > 1;
+
+        return res.status(200).json({
+            success: true,
+            jobs,
+            pagination: {
+                total,
+                page,
+                totalPages,
+                hasNextPage,
+                hasPrevPage,
+                limit
+            }
+        });
+
+    } catch (error) {
+        console.error('Search error:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Server error during search',
+            error: error.message
+        });
     }
 };
 
