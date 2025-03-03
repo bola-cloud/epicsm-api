@@ -355,13 +355,28 @@ exports.mGetJobsToLike = async (req, res) => {
         }
 
         const jobs = await Job.find({
-            status: "Active", isLive: true, $or: [
+            status: "Active",
+            isLive: true,
+            $or: [
                 { country: req.params.country },
                 { country: "all" }
-            ], $expr: { $lt: ["$likeCount", "$maxCount"] }
-        }).sort({ createdAt: -1 });
-        if (!jobs) return res.status(404).json({ message: 'No Job found' });
-        res.status(200).json(jobs);
+            ],
+            $expr: { $lt: ["$likeCount", "$maxCount"] }
+        });
+
+        if (!jobs || jobs.length === 0) {
+            return res.status(404).json({ message: 'No Job found' });
+        }
+
+        // Sort jobs: first by isVip (true first), then by createdAt (newest first)
+        const sortedJobs = jobs.sort((a, b) => {
+            if (a.isVip === true && b.isVip !== true) return -1;
+            if (a.isVip !== true && b.isVip === true) return 1;
+
+            return b.createdAt - a.createdAt;
+        });
+
+        res.status(200).json(sortedJobs);
     } catch (error) {
         res.status(500).json({ message: error.message });
     }

@@ -55,6 +55,9 @@ const jobSchema = mongoose.Schema({
     platform: {
         type: String,
     },
+    isVip: {
+        type: Boolean,
+    },
     status: {
         type: String,
         required: true,
@@ -71,7 +74,6 @@ const jobSchema = mongoose.Schema({
     uid: {
         type: String,
         default: "----admin----",
-        unique: false
     }
 
 });
