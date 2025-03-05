@@ -530,3 +530,38 @@ exports.GetBannedUsers = async (req, res) => {
         });
     }
 };
+
+// Update user VIP status
+exports.UpdateUserVipStatus = async (req, res) => {
+    try {
+        const isUser = await authController.getUserByToken(req, res);
+
+        if (!isUser) {
+            return res.status(401).json({ message: 'Unauthorized' });
+        }
+
+        const userId = req.params.id;
+        const { isVip } = req.body;
+
+        if (isVip === undefined) {
+            return res.status(400).json({ message: 'isVip field is required' });
+        }
+
+        const userRef = db.collection('users').doc(userId);
+        const doc = await userRef.get();
+
+        if (!doc.exists) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        await userRef.update({ isVip: isVip });
+
+        res.status(200).json({
+            message: `User ${userId}'s VIP status updated to ${isVip ? 'enabled' : 'disabled'}.`,
+            isVip: isVip
+        });
+    } catch (error) {
+        console.error('Error updating VIP status:', error);
+        res.status(500).json({ message: 'Internal Server Error' });
+    }
+};

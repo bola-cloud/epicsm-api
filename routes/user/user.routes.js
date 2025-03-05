@@ -70,6 +70,8 @@ router.get('/users/export', usersController.ExportFirebaseUsersCSV);
 
 router.get('/users/banned', usersController.GetBannedUsers);
 
+router.put('/firestore/updateVipStatus/:id', usersController.UpdateUserVipStatus);
+
 
 
 module.exports = router;

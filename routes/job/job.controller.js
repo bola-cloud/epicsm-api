@@ -306,14 +306,31 @@ exports.mCreateJob = async (req, res) => {
             return res.status(200).json({});
         }
 
-        const newJob = new Job(req.body);
+        // Get the user from Firestore to check VIP status
+        const userRef = db.collection('users').doc(uid);
+        const userDoc = await userRef.get();
+
+        if (!userDoc.exists) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        const userData = userDoc.data();
+
+        const jobData = { ...req.body };
+
+        if (userData.isVip) {
+            jobData.isVip = true;
+        }
+
+        const newJob = new Job(jobData);
         const savedJob = await newJob.save();
+
         res.status(201).json(savedJob);
     } catch (error) {
+        console.error('Error creating job:', error);
         res.status(500).json({ message: error.message });
     }
 };
-
 
 exports.mGetMyJobs = async (req, res) => {
     try {

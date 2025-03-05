@@ -47,6 +47,9 @@ const userSchema = mongoose.Schema({
         require: true,
         default: "client",
     },
+    isVip: {
+        type: Boolean,
+    },
     created: {
         type: Date,
         require: true,
