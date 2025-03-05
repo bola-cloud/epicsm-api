@@ -309,20 +309,20 @@ exports.mCreateJob = async (req, res) => {
         }
 
         // Get the user from Firestore to check VIP status
-        const userRef = db.collection('users').doc(uid);
-        const userDoc = await userRef.get();
+        // const userRef = db.collection('users').doc(uid);
+        // const userDoc = await userRef.get();
 
-        if (!userDoc.exists) {
-            return res.status(404).json({ message: 'User not found' });
-        }
+        // if (!userDoc.exists) {
+        //     return res.status(404).json({ message: 'User not found' });
+        // }
 
-        const userData = userDoc.data();
+        // const userData = userDoc.data();
 
         const jobData = { ...req.body };
 
-        if (userData.isVip) {
-            jobData.isVip = true;
-        }
+        // if (userData.isVip) {
+        //     jobData.isVip = true;
+        // }
 
         const newJob = new Job(jobData);
         const savedJob = await newJob.save();
