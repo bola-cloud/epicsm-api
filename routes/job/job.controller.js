@@ -2,7 +2,9 @@ const Job = require('../../models/job');
 const Ping = require('../../models/ping');
 const Blocked = require('../../models/blocked');
 const authController = require('../authentication/authentication.controller')
+const admin = require("firebase-admin");
 
+const db = admin.firestore();
 
 
 exports.CreateJob = async (req, res) => {

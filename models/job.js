@@ -57,6 +57,7 @@ const jobSchema = mongoose.Schema({
     },
     isVip: {
         type: Boolean,
+        default: false,
     },
     status: {
         type: String,
