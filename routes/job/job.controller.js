@@ -291,6 +291,105 @@ exports.SearchJobs = async (req, res) => {
     }
 };
 
+exports.FilterJobs = async (req, res) => {
+    try {
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+        const skipDocs = (page - 1) * limit;
+
+        const filterCriteria = {};
+
+        if (req.query.platformFilter) {
+            filterCriteria.platform = { $regex: req.query.platformFilter, $options: 'i' };
+        }
+
+        if (req.query.statusFilter) {
+            filterCriteria.status = req.query.statusFilter;
+        }
+
+        if (req.query.jobIdFilter) {
+            filterCriteria.jobId = { $regex: req.query.jobIdFilter, $options: 'i' };
+        }
+
+        if (req.query.linkTypeNameFilter) {
+            filterCriteria.linkTypeName = { $regex: req.query.linkTypeNameFilter, $options: 'i' };
+        }
+
+        if (req.query.uidFilter) {
+            filterCriteria.uid = { $regex: req.query.uidFilter, $options: 'i' };
+        }
+
+        if (req.query.minLikes) {
+            filterCriteria.likeCount = { $gte: parseInt(req.query.minLikes) };
+        }
+
+        if (req.query.minMaxCount) {
+            filterCriteria.maxCount = { $gte: parseInt(req.query.minMaxCount) };
+        }
+
+        if (req.query.startDate || req.query.endDate) {
+            filterCriteria.datePublished = {};
+
+            if (req.query.startDate) {
+                const startDate = new Date(req.query.startDate);
+                startDate.setHours(0, 0, 0, 0);
+                filterCriteria.datePublished.$gte = startDate;
+            }
+
+            if (req.query.endDate) {
+                const endDate = new Date(req.query.endDate);
+                endDate.setHours(23, 59, 59, 999);
+                filterCriteria.datePublished.$lte = endDate;
+            }
+        }
+
+        if (req.query.liveFilter && req.query.liveFilter !== 'all') {
+            filterCriteria.isLive = req.query.liveFilter === 'true';
+        }
+
+        if (req.query.isVipFilter === 'true') {
+            filterCriteria.isVip = true;
+        } else if (req.query.isVipFilter === 'false') {
+            filterCriteria.$or = [
+                { isVip: false },
+                { isVip: { $exists: false } }
+            ];
+        }
+
+        const jobs = await Job.find(filterCriteria)
+            .sort({ createdAt: -1 })
+            .skip(skipDocs)
+            .limit(limit);
+
+        const total = await Job.countDocuments(filterCriteria);
+
+        const totalPages = Math.ceil(total / limit);
+        const hasNextPage = page < totalPages;
+        const hasPrevPage = page > 1;
+
+        return res.status(200).json({
+            success: true,
+            jobs,
+            pagination: {
+                total,
+                page,
+                totalPages,
+                hasNextPage,
+                hasPrevPage,
+                limit
+            }
+        });
+
+    } catch (error) {
+        console.error('Filter error:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Server error during filtering',
+            error: error.message
+        });
+    }
+};
+
 // Mobile API
 
 exports.mCreateJob = async (req, res) => {

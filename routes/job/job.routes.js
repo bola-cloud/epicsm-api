@@ -58,6 +58,7 @@ router.get(
     JobsController.SearchJobs
 )
 
+router.get('/filter/filter', JobsController.FilterJobs);
 
 // Routes for mobile app
 // add job

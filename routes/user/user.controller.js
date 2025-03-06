@@ -28,6 +28,23 @@ const normalizeNames = async () => {
     });
 };
 
+async function updateDailyRewardForAllUsers(newDailyRewardValue) {
+    // Get all user documents
+    const usersRef = db.collection('users');
+    const snapshot = await usersRef.get();
+
+    // Create a batch
+    const batch = db.batch();
+
+    // Add update operations to batch
+    snapshot.docs.forEach(doc => {
+        batch.update(doc.ref, { dailyRewards: newDailyRewardValue });
+    });
+
+    // Commit the batch
+    await batch.commit();
+    console.log(`Updated dailyReward to ${newDailyRewardValue} for ${snapshot.size} users`);
+}
 
 // Create a new user
 exports.CreateUser = async (req, res) => {
