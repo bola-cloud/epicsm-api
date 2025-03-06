@@ -13,6 +13,7 @@ admin.initializeApp({
 const db = admin.firestore();
 
 
+
 // One-time script to normalize names in the Firestore database
 const normalizeNames = async () => {
     const usersRef = db.collection('users');
@@ -27,24 +28,6 @@ const normalizeNames = async () => {
         });
     });
 };
-
-async function updateDailyRewardForAllUsers(newDailyRewardValue) {
-    // Get all user documents
-    const usersRef = db.collection('users');
-    const snapshot = await usersRef.get();
-
-    // Create a batch
-    const batch = db.batch();
-
-    // Add update operations to batch
-    snapshot.docs.forEach(doc => {
-        batch.update(doc.ref, { dailyRewards: newDailyRewardValue });
-    });
-
-    // Commit the batch
-    await batch.commit();
-    console.log(`Updated dailyReward to ${newDailyRewardValue} for ${snapshot.size} users`);
-}
 
 // Create a new user
 exports.CreateUser = async (req, res) => {
@@ -75,7 +58,6 @@ exports.CreateUser = async (req, res) => {
 };
 
 // Get all users from firebase
-// Get Users Endpoint - Clean and focused on pagination
 exports.GetFirebaseUsers = async (req, res) => {
     try {
         const isUser = await authController.getUserByToken(req, res);
@@ -198,6 +180,7 @@ exports.SearchFirebaseUsers = async (req, res) => {
         });
     }
 };
+
 // Get Users ordered by last sign in
 exports.GetUsersByLastSignIn = async (req, res) => {
     try {
