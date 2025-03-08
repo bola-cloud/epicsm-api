@@ -60,6 +60,12 @@ router.get(
 
 router.get('/filter/filter', JobsController.FilterJobs);
 
+router.get('/all-ids/all-ids', JobsController.GetFilteredJobIds);
+
+router.get('/search/all-ids/all-ids', JobsController.GetSearchJobIds);
+
+router.get('/filtered/all-ids/all-ids', JobsController.GetFilteredJobIds);
+
 // Routes for mobile app
 // add job
 router.post(

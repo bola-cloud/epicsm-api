@@ -390,8 +390,162 @@ exports.FilterJobs = async (req, res) => {
     }
 };
 
-// Mobile API
+exports.GetAllJobIds = async (req, res) => {
+    try {
+        const isUser = await authController.getUserByToken(req, res);
+        if (!isUser) {
+            return res.status(401).json({ message: 'Unauthorized' });
+        }
 
+        // Only fetch the _id field for efficiency
+        const jobs = await Job.find({}, { _id: 1 });
+
+        // Extract the job IDs
+        const jobIds = jobs.map(job => job._id.toString());
+
+        res.status(200).json({
+            jobIds,
+            count: jobIds.length
+        });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+exports.GetFilteredJobIds = async (req, res) => {
+    try {
+        const isUser = await authController.getUserByToken(req, res);
+        if (!isUser) {
+            return res.status(401).json({ message: 'Unauthorized' });
+        }
+
+        const filterCriteria = {};
+
+        if (req.query.platformFilter) {
+            filterCriteria.platform = { $regex: req.query.platformFilter, $options: 'i' };
+        }
+
+        if (req.query.statusFilter) {
+            filterCriteria.status = req.query.statusFilter;
+        }
+
+        if (req.query.jobIdFilter) {
+            filterCriteria.jobId = { $regex: req.query.jobIdFilter, $options: 'i' };
+        }
+
+        if (req.query.linkTypeNameFilter) {
+            filterCriteria.linkTypeName = { $regex: req.query.linkTypeNameFilter, $options: 'i' };
+        }
+
+        if (req.query.uidFilter) {
+            filterCriteria.uid = { $regex: req.query.uidFilter, $options: 'i' };
+        }
+
+        if (req.query.minLikes) {
+            filterCriteria.likeCount = { $gte: parseInt(req.query.minLikes) };
+        }
+
+        if (req.query.minMaxCount) {
+            filterCriteria.maxCount = { $gte: parseInt(req.query.minMaxCount) };
+        }
+
+        if (req.query.startDate || req.query.endDate) {
+            filterCriteria.datePublished = {};
+
+            if (req.query.startDate) {
+                const startDate = new Date(req.query.startDate);
+                startDate.setHours(0, 0, 0, 0);
+                filterCriteria.datePublished.$gte = startDate;
+            }
+
+            if (req.query.endDate) {
+                const endDate = new Date(req.query.endDate);
+                endDate.setHours(23, 59, 59, 999);
+                filterCriteria.datePublished.$lte = endDate;
+            }
+        }
+
+        if (req.query.liveFilter && req.query.liveFilter !== 'all') {
+            filterCriteria.isLive = req.query.liveFilter === 'true';
+        }
+
+        if (req.query.isVipFilter === 'true') {
+            filterCriteria.isVip = true;
+        } else if (req.query.isVipFilter === 'false') {
+            filterCriteria.$or = [
+                { isVip: false },
+                { isVip: { $exists: false } }
+            ];
+        }
+
+        // Get all job IDs without pagination - we're using lean() for better performance
+        // and only selecting the _id field
+        const jobs = await Job.find(filterCriteria)
+            .select('_id')
+            .lean();
+
+        // Extract the job IDs
+        const jobIds = jobs.map(job => job._id.toString());
+
+        return res.status(200).json({
+            success: true,
+            jobIds,
+            count: jobIds.length
+        });
+
+    } catch (error) {
+        console.error('GetFilteredJobIds error:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Server error while getting filtered job IDs',
+            error: error.message
+        });
+    }
+};
+
+// For search results
+exports.GetSearchJobIds = async (req, res) => {
+    try {
+        const isUser = await authController.getUserByToken(req, res);
+        if (!isUser) {
+            return res.status(401).json({ message: 'Unauthorized' });
+        }
+
+        const { q } = req.query;
+
+        if (!q) {
+            return res.status(400).json({ message: 'Search query is required' });
+        }
+
+        // Create a search query similar to your existing search endpoint
+        // Adjust this based on your actual search implementation
+        const searchQuery = {
+            $or: [
+                { title: { $regex: q, $options: 'i' } },
+                { description: { $regex: q, $options: 'i' } },
+                { platform: { $regex: q, $options: 'i' } },
+                { jobId: { $regex: q, $options: 'i' } },
+                // Add other fields you want to search
+            ]
+        };
+
+        // Only fetch the _id field for efficiency
+        const jobs = await Job.find(searchQuery, { _id: 1 });
+
+        // Extract the job IDs
+        const jobIds = jobs.map(job => job._id.toString());
+
+        res.status(200).json({
+            jobIds,
+            count: jobIds.length
+        });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+
+// Mobile API
 exports.mCreateJob = async (req, res) => {
     try {
         const { uid } = req.body;
