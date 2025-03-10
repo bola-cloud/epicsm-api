@@ -203,3 +203,220 @@ exports.deleteMethod = async (req, res) => {
         handleError(res, error);
     }
 };
+
+// Get all dictionary entries
+exports.getDictionaryEntries = async (req, res) => {
+    try {
+        const settings = await Settings.findOne();
+
+        if (!settings || !settings.dictionary) {
+            return res.json({ dictionary: {} });
+        }
+
+        const dictionaryObject = {};
+        settings.dictionary.forEach((value, key) => {
+            dictionaryObject[key] = value;
+        });
+
+        return res.json({ dictionary: dictionaryObject });
+    } catch (error) {
+        handleError(res, error);
+    }
+};
+
+// Add a dictionary entry
+exports.addDictionaryEntry = async (req, res) => {
+    try {
+        const { key, values } = req.body;
+
+        if (!key?.trim()) {
+            const error = new Error('Dictionary key is required');
+            error.status = 400;
+            throw error;
+        }
+
+        if (!values || !Array.isArray(values) || values.length === 0) {
+            const error = new Error('Values array is required and must not be empty');
+            error.status = 400;
+            throw error;
+        }
+
+        const trimmedKey = key.trim();
+        let settings = await Settings.findOne();
+
+        if (!settings) {
+            // Initialize a new dictionary with this entry
+            const dictionary = new Map();
+            dictionary.set(trimmedKey, values);
+
+            settings = await Settings.create({
+                dictionary,
+                reportErrors: false,
+                reportHtml: false
+            });
+
+            return res.status(201).json({
+                key: trimmedKey,
+                values
+            });
+        }
+
+        // Ensure dictionary exists
+        if (!settings.dictionary) {
+            settings.dictionary = new Map();
+        }
+
+        // Check if key already exists
+        if (settings.dictionary.has(trimmedKey)) {
+            const error = new Error('Dictionary key already exists');
+            error.status = 400;
+            throw error;
+        }
+
+        // Add the entry
+        settings.dictionary.set(trimmedKey, values);
+        await settings.save();
+
+        res.status(201).json({
+            key: trimmedKey,
+            values
+        });
+    } catch (error) {
+        handleError(res, error);
+    }
+};
+
+// Update a dictionary entry
+exports.updateDictionaryEntry = async (req, res) => {
+    try {
+        const { key, values } = req.body;
+
+        if (!key?.trim()) {
+            const error = new Error('Dictionary key is required');
+            error.status = 400;
+            throw error;
+        }
+
+        if (!values || !Array.isArray(values) || values.length === 0) {
+            const error = new Error('Values array is required and must not be empty');
+            error.status = 400;
+            throw error;
+        }
+
+        const trimmedKey = key.trim();
+        const settings = await Settings.findOne();
+
+        if (!settings || !settings.dictionary) {
+            const error = new Error('Dictionary not found');
+            error.status = 404;
+            throw error;
+        }
+
+        if (!settings.dictionary.has(trimmedKey)) {
+            const error = new Error('Dictionary key not found');
+            error.status = 404;
+            throw error;
+        }
+
+        // Update the entry
+        settings.dictionary.set(trimmedKey, values);
+        await settings.save();
+
+        res.json({
+            key: trimmedKey,
+            values
+        });
+    } catch (error) {
+        handleError(res, error);
+    }
+};
+
+// Delete a dictionary entry
+exports.deleteDictionaryEntry = async (req, res) => {
+    try {
+        const { key } = req.params;
+
+        if (!key?.trim()) {
+            const error = new Error('Dictionary key is required');
+            error.status = 400;
+            throw error;
+        }
+
+        const trimmedKey = key.trim();
+        const settings = await Settings.findOne();
+
+        if (!settings || !settings.dictionary) {
+            const error = new Error('Dictionary not found');
+            error.status = 404;
+            throw error;
+        }
+
+        if (!settings.dictionary.has(trimmedKey)) {
+            const error = new Error('Dictionary key not found');
+            error.status = 404;
+            throw error;
+        }
+
+        // Delete the entry
+        settings.dictionary.delete(trimmedKey);
+        await settings.save();
+
+        res.json({
+            message: 'Dictionary entry deleted successfully',
+            key: trimmedKey
+        });
+    } catch (error) {
+        handleError(res, error);
+    }
+};
+
+
+// Get dictionary Mobile 
+exports.getDictionary = async (req, res) => {
+    try {
+        const { key } = req.params;
+        const settings = await Settings.findOne();
+
+        if (!settings || !settings.dictionary) {
+            return res.json({
+                success: true,
+                data: key ? null : {},
+                message: key ? 'Dictionary key not found' : 'No dictionary entries found'
+            });
+        }
+
+        if (key) {
+            if (!settings.dictionary.has(key)) {
+                return res.json({
+                    success: true,
+                    data: null,
+                    message: 'Dictionary key not found'
+                });
+            }
+
+            return res.json({
+                success: true,
+                data: {
+                    key,
+                    values: settings.dictionary.get(key)
+                }
+            });
+        } else {
+            const dictionaryData = [];
+            settings.dictionary.forEach((values, key) => {
+                dictionaryData.push({
+                    key,
+                    values
+                });
+            });
+
+            return res.json({
+                success: true,
+                data: dictionaryData,
+                count: dictionaryData.length
+            });
+        }
+    } catch (error) {
+        handleError(res, error);
+    }
+};

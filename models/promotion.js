@@ -13,6 +13,9 @@ const PromotionSchema = new mongoose.Schema({
     active: {
         type: Boolean,
     },
+    promotion_settings: {
+        type: String,
+    }
 });
 
 module.exports = mongoose.model('Promotion', PromotionSchema);

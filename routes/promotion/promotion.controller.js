@@ -146,6 +146,28 @@ exports.deletePromotion = async (req, res) => {
     }
 };
 
+async function updatePromotionSettings(dailyReward) {
+    try {
+        const promotion = await Promotion.findOneAndUpdate(
+            {},
+            {
+                promotion_settings: dailyReward,
+            },
+            { new: true }
+        );
+
+        if (!promotion) {
+            console.warn('No promotion document found to update');
+            return null;
+        }
+
+        console.log(`Updated promotion settings to ${dailyReward}`);
+        return promotion;
+    } catch (error) {
+        console.error(`Error updating promotion settings: ${error.message}`);
+        throw error;
+    }
+}
 
 async function scheduleRewardUpdates(promotion) {
     await cancelScheduledRewardUpdates();
@@ -185,11 +207,14 @@ async function scheduleRewardUpdates(promotion) {
                 : (currentTimeMinutes >= startTimeMinutes || currentTimeMinutes < endTimeMinutes);
 
             if (isPromotionActive) {
+                // Update daily reward value to 100 when promotion is active
+                await updatePromotionSettings(100);
                 await updateDailyRewardForAllUsers(100);
                 console.log(`Promotion active now in ${timezone}: Daily rewards set to 100`);
             } else {
                 console.log(`Promotion not currently active in ${timezone}`);
                 // Ensure rewards are at default value outside promotion hours
+                await updatePromotionSettings(50);
                 await updateDailyRewardForAllUsers(50);
             }
 
@@ -200,6 +225,7 @@ async function scheduleRewardUpdates(promotion) {
             try {
                 startCronJob = cron.schedule(startCronExpression, async () => {
                     console.log(`Daily promotion start time reached in ${timezone}`);
+                    await updatePromotionSettings(100);
                     await updateDailyRewardForAllUsers(100);
                     console.log('Promotion started: Daily rewards increased to 100');
                 }, {
@@ -219,6 +245,7 @@ async function scheduleRewardUpdates(promotion) {
             try {
                 endCronJob = cron.schedule(endCronExpression, async () => {
                     console.log(`Daily promotion end time reached in ${timezone}`);
+                    await updatePromotionSettings(50);
                     await updateDailyRewardForAllUsers(50);
                     console.log('Promotion ended: Daily rewards reset to 50');
                 }, {
@@ -238,7 +265,6 @@ async function scheduleRewardUpdates(promotion) {
     console.error('Invalid promotion time format. Expected HH:MM format for start and end times.');
     return;
 }
-
 
 async function cancelScheduledRewardUpdates() {
     try {

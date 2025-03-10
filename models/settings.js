@@ -26,6 +26,13 @@ const settingsSchema = new mongoose.Schema({
     rrt: {
         type: Number,
         default: 0
+    },
+    dictionary: {
+        type: Map,
+        of: [{
+            type: String
+        }],
+        default: new Map()
     }
 });
 

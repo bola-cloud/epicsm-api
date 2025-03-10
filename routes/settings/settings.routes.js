@@ -22,6 +22,14 @@ router.put('/methods/:id', SettingsController.updateMethod);
 
 router.delete('/methods/:id', SettingsController.deleteMethod);
 
+router.get('/dictionary', SettingsController.getDictionaryEntries);
 
+router.post('/dictionary', SettingsController.addDictionaryEntry);
+
+router.put('/dictionary', SettingsController.updateDictionaryEntry);
+
+router.delete('/dictionary/:key', SettingsController.deleteDictionaryEntry);
+
+router.get('/dictionary/mobile', SettingsController.getDictionary);
 
 module.exports = router;
