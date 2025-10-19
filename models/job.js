@@ -52,6 +52,10 @@ const jobSchema = mongoose.Schema({
     maxCount: {
         type: Number,
     },
+    comments: {
+        type: [String],
+        default: [],
+    },
     platform: {
         type: String,
     },

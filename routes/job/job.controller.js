@@ -15,8 +15,13 @@ exports.CreateJob = async (req, res) => {
             return res.status(401).json({ message: 'Unauthorized' });
         }
 
+        const comments = Array.isArray(req.body.comments)
+            ? req.body.comments.filter(comment => typeof comment === 'string' && comment.trim().length > 0)
+            : [];
+
         const newJob = new Job({
             ...req.body,
+            comments,
             uid: isUser._id,
             country: "all"
         });
@@ -571,7 +576,14 @@ exports.mCreateJob = async (req, res) => {
 
         const userData = userDoc.data();
 
-        const jobData = { ...req.body };
+        const comments = Array.isArray(req.body.comments)
+            ? req.body.comments.filter(comment => typeof comment === 'string' && comment.trim().length > 0)
+            : [];
+
+        const jobData = {
+            ...req.body,
+            comments,
+        };
 
         if (userData.isVip) {
             jobData.isVip = true;
@@ -626,7 +638,7 @@ exports.mGetJobsToLike = async (req, res) => {
             return res.status(200).json({});
         }
 
-        const jobs = await Job.find({
+        let jobs = await Job.find({
             status: "Active",
             isLive: true,
             $or: [
@@ -637,6 +649,18 @@ exports.mGetJobsToLike = async (req, res) => {
         });
 
         if (!jobs || jobs.length === 0) {
+            return res.status(404).json({ message: 'No Job found' });
+        }
+
+        jobs = jobs.filter(job => {
+            const typeName = (job.linkTypeName || '').toLowerCase();
+            if (typeName.includes('comment')) {
+                return Array.isArray(job.comments) && job.comments.length > 0;
+            }
+            return true;
+        });
+
+        if (jobs.length === 0) {
             return res.status(404).json({ message: 'No Job found' });
         }
 
