@@ -63,9 +63,14 @@ exports.checkPassword = async (req, res, next) => {
 exports.createToken = (req, res, next) => {
   const user = res.locals.user;
   const { Remember } = req.body;
+  // Create a minimal JWT payload (avoid embedding hashed password)
+  const payload = {
+    _id: user._id,
+    role: user.role,
+    tokenVersion: user.tokenVersion || 0,
+  };
 
-  // If authentication is OK send user JWT
-  const token = jwt.sign(user.toJSON(), process.env.JWT_SECRET, {
+  const token = jwt.sign(payload, process.env.JWT_SECRET, {
     algorithm: "HS256",
     expiresIn: Remember ? "15d" : "1d",
   });
@@ -164,6 +169,11 @@ exports.getUserByToken = async (req, res) => {
     const cleanToken = token.replace('JWT ', '');
     const decoded = jwt.verify(cleanToken, process.env.JWT_SECRET);
 
+    // Verify tokenVersion matches current user record to allow server-side revocation
+    const user = await User.findOne({ _id: decoded._id });
+    if (!user) return null;
+    if ((user.tokenVersion || 0) !== (decoded.tokenVersion || 0)) return null;
+
     return decoded;
   } catch (error) {
     console.error("Error verifying token:", error);
@@ -182,8 +192,19 @@ exports.checkTokenExpiration = (req, res, next) => {
 
   try {
     const decoded = jwt.verify(cleanToken, process.env.JWT_SECRET);
-    req.user = decoded;
-    next();
+
+    // Verify tokenVersion against DB to support revocation
+    User.findOne({ _id: decoded._id }).then((user) => {
+      if (!user) return res.status(401).json({ message: 'Invalid token (user not found)' });
+      if ((user.tokenVersion || 0) !== (decoded.tokenVersion || 0)) {
+        return res.status(401).json({ message: 'Token revoked' });
+      }
+      req.user = decoded;
+      next();
+    }).catch((e) => {
+      console.error('Error checking tokenVersion:', e && e.message);
+      return res.status(500).json({ message: 'Internal error' });
+    });
   } catch (error) {
     if (error.name === 'TokenExpiredError') {
       return res.status(401).json({ message: "Token has expired" });

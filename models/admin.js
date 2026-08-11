@@ -30,6 +30,11 @@ const userSchema = mongoose.Schema({
         type: String,
         require: true,
     },
+    tokenVersion: {
+        type: Number,
+        require: true,
+        default: 0,
+    },
     role: {
         type: String,
         require: true,

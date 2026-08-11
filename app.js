@@ -14,7 +14,25 @@ const fs = require('fs');
 // Create Express app
 const app = express();
 
-app.use(cors())
+// Configure CORS: allow explicit origins via ALLOWED_ORIGINS env var (comma-separated).
+// If ALLOWED_ORIGINS is not set, fall back to permissive default for compatibility.
+const allowedOriginsEnv = process.env.ALLOWED_ORIGINS;
+if (allowedOriginsEnv) {
+  const allowedOrigins = allowedOriginsEnv.split(',').map((s) => s.trim());
+  app.use(
+    cors({
+      origin: function (origin, callback) {
+        if (!origin) return callback(null, true);
+        if (allowedOrigins.indexOf(origin) !== -1) return callback(null, true);
+        return callback(new Error('Not allowed by CORS'));
+      },
+      credentials: true,
+      optionsSuccessStatus: 200,
+    })
+  );
+} else {
+  app.use(cors());
+}
 
 app.use(
   bodyParser.urlencoded({
@@ -80,8 +98,12 @@ app.use(function (req, res, next) {
 // configure corn job
 cron.schedule('*/15 * * * *', async () => {
   try {
-    // Delete all documents
-    const result = await Ping.deleteMany({});
+    // Delete all documents (only if destructive ops are explicitly allowed)
+    if (process.env.ALLOW_DB_DESTRUCTIVE_OPS === 'true') {
+      await Ping.deleteMany({});
+    } else {
+      console.warn('Skipping Ping.deleteMany({}) because ALLOW_DB_DESTRUCTIVE_OPS is not set to true');
+    }
   } catch (error) {
     console.error('Error in cron job:', error);
   }

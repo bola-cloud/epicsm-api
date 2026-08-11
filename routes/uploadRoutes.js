@@ -2,6 +2,7 @@ const express = require('express');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const { restrictToAdmin } = require('../middlewares/roles.middleware');
 const router = express.Router({ mergeParams: true });
 
 // Ensure the uploads directory exists
@@ -27,7 +28,7 @@ const upload = multer({
 });
 
 // Route for uploading APK file (Admin only)
-router.post('/upload-apk', upload.single('apk'), (req, res) => {
+router.post('/upload-apk', restrictToAdmin, upload.single('apk'), (req, res) => {
   console.log('Request Body:', req.body); // Debug: Log the request body
   console.log('Uploaded File:', req.file); // Debug: Log the uploaded file
 
