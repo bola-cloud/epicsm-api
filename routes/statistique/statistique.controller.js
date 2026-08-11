@@ -224,12 +224,22 @@ exports.GetLogs = async (req, res) => {
             if (endDate) query.timestamp.$lte = new Date(endDate);
         }
 
-        const logs = await Log.find(query)
-            .sort({ timestamp: -1 })
+        let logQuery = Log.find(query).sort({ timestamp: -1 });
+        
+        if (Object.keys(query).length === 0) {
+            logQuery = logQuery.hint({ timestamp: 1 });
+        }
+
+        const logs = await logQuery
             .skip((page - 1) * limit)
             .limit(parseInt(limit));
 
-        const total = await Log.countDocuments(query);
+        let total;
+        if (Object.keys(query).length === 0) {
+            total = await Log.estimatedDocumentCount();
+        } else {
+            total = await Log.countDocuments(query);
+        }
 
         res.json({
             logs,
