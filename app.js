@@ -83,8 +83,10 @@ app.use(httpLogger)
 app.use("/api/v4", apiRoutes)
 
 app.use("/api/v3", apiRoutes)
-
-
+// V2 Mobile APIs (Isolated)
+// Mounted under /api/v4 so Nginx automatically routes it to the API server
+app.use("/api/v4/mobile_v2", require('./v2/routes/mobile.routes'))
+app.use("/api/v4/admin/v2", require('./v2/routes/admin.routes'))
 // API route not found handler
 app.use(function (req, res, next) {
   if (!req.route)

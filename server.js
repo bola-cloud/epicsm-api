@@ -34,5 +34,11 @@ db.instance()
 
 logger.info("Starting API server...");
 
-const port = process.env.PORT || 443
-app.listen(port, () => logger.info(`🔥 Server started ==> PORT ${port} 🔥`))
+const port = process.env.PORT || 443;
+const serverInstance = app.listen(port, () => {
+    logger.info(`🔥 Server started ==> PORT ${port} 🔥`);
+});
+
+// Initialize V2 Jobs System
+const { initV2 } = require('./v2/index');
+initV2(serverInstance);

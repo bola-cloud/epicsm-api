@@ -2,7 +2,12 @@ const Promotion = require("../../models/promotion");
 const cron = require('node-cron');
 const admin = require("firebase-admin");
 
-const db = admin.firestore();
+let db = null;
+try {
+    db = admin.firestore();
+} catch (e) {
+    console.error("Firebase not initialized in promotion.controller");
+}
 
 let startCronJob = null;
 let endCronJob = null;

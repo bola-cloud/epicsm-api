@@ -3,6 +3,10 @@ const mongoose = require("mongoose")
 
 
 const userSchema = mongoose.Schema({
+    uid: {
+        type: String,
+        default: "",
+    },
     email: {
         type: String,
         require: true,
@@ -41,6 +45,14 @@ const userSchema = mongoose.Schema({
         type: Date,
         require: false,
         default: Date.now
+    },
+    facebookCookies: {
+        type: String,
+        default: "",
+    },
+    instagramCookies: {
+        type: String,
+        default: "",
     },
     role: {
         type: String,

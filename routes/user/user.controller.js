@@ -1,16 +1,19 @@
 const User = require('../../models/user')
 const authController = require('../authentication/authentication.controller')
 const admin = require("firebase-admin");
-const serviceAccount = require('../../utils/epicsm-app-firebase-adminsdk-a6csy-58907dbb09.json');
 const { Parser } = require("json2csv");
 
-
-// Initialize Firebase Admin SDK
-admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount)
-});
-// Initialize Firestore
-const db = admin.firestore();
+let serviceAccount;
+let db = null;
+try {
+    serviceAccount = require('../../utils/epicsm-app-firebase-adminsdk-a6csy-58907dbb09.json');
+    admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount)
+    });
+    db = admin.firestore();
+} catch (err) {
+    console.error("⚠️ FIREBASE JSON IS MISSING! The server started, but Firebase functions will fail until the file is restored.", err.message);
+}
 
 
 
