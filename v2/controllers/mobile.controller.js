@@ -164,10 +164,77 @@ exports.mCreateJobV2 = async (req, res) => {
 exports.mGetMyJobsV2 = async (req, res) => {
     try {
         const { id } = req.params; // This is the uid
-        // Find jobs created by this user
-        const jobs = await JobV2.find({ creatorId: id, status: { $ne: 'Deleted' } }).sort({ createdAt: -1 });
-        if (!jobs || jobs.length === 0) return res.status(404).json({ message: 'No Job found' });
-        res.status(200).json(jobs);
+        const { platform, page, limit } = req.query; // Pagination and filtering
+
+        // Build the query
+        const query = { creatorId: id, status: { $ne: 'Deleted' } };
+        
+        if (platform && platform.toLowerCase() !== 'all') {
+            query.platform = platform.toLowerCase();
+        }
+
+        // Pagination setup (defaults to page 1, limit 20)
+        const pageNumber = parseInt(page) || 1;
+        const pageSize = parseInt(limit) || 20;
+        const skip = (pageNumber - 1) * pageSize;
+
+        // Get total count for pagination metadata
+        const totalJobs = await JobV2.countDocuments(query);
+        const totalPages = Math.ceil(totalJobs / pageSize) || 1;
+
+        // Find jobs created by this user with pagination
+        const jobs = await JobV2.find(query)
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(pageSize);
+
+        // Map V2 schema to V1 schema shape for mobile compatibility
+        const mappedJobs = jobs.map(job => {
+            const j = job.toObject();
+            
+            // Generate valid fallback for linkTypeName if not explicitly set
+            let linkTypeName = j.linkTypeName;
+            if (!linkTypeName) {
+                if (j.actionType === 'follow') linkTypeName = 'FollowAccount';
+                else if (j.actionType === 'view') linkTypeName = 'View';
+                else if (j.actionType === 'share') linkTypeName = 'Share';
+                else if (j.actionType === 'comment') linkTypeName = 'Comment';
+                else linkTypeName = 'Like';
+            }
+
+            // ENFORCE strict types for the mobile app (mobile only supports these)
+            const validTypes = ['post', 'page/profile', 'profile', 'group'];
+            let mappedType = j.type;
+            
+            // If the type in DB is invalid (like 'comment', 'like', 'follow', etc.), force it to a valid one
+            if (!validTypes.includes(mappedType)) {
+                if (linkTypeName === 'FollowAccount' || linkTypeName === 'InstaFollowAccount') {
+                    mappedType = 'page/profile';
+                } else if (linkTypeName === 'JoinGroup') {
+                    mappedType = 'group';
+                } else {
+                    mappedType = 'post';
+                }
+            }
+
+            return {
+                ...j,
+                link: j.targetLink,
+                type: mappedType,
+                linkTypeName: linkTypeName,
+                uid: j.creatorId,
+                datePublished: j.createdAt,
+                isLive: j.status === 'Active'
+            };
+        });
+
+        // Return the paginated response object
+        res.status(200).json({
+            currentPage: pageNumber,
+            totalPages: totalPages,
+            totalJobs: totalJobs,
+            data: mappedJobs
+        });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -229,17 +296,50 @@ exports.mUpdateCookies = async (req, res) => {
         
         const updateData = {};
         updateData[updateField] = cookies;
-        // Also set email to a dummy one if it's a new user, because email is required in the schema
-        // though we should ideally get it from Firebase, we don't have it here.
-        updateData['email'] = `${uid}@mobile.worker`;
+        
+        const setOnInsertData = {};
+
+        // Try to find if user exists first to avoid overwriting their real email
+        const existingUser = await User.findOne({ uid: uid });
+        
+        if (!existingUser) {
+            // User doesn't exist in MongoDB yet, try to get from Firebase Firestore
+            try {
+                if (db) {
+                    const userDoc = await db.collection('users').doc(uid).get();
+                    if (userDoc.exists) {
+                        const data = userDoc.data();
+                        setOnInsertData['email'] = data.email || `${uid}@mobile.worker`;
+                        setOnInsertData['nom'] = data.nom || '';
+                        setOnInsertData['prenom'] = data.prenom || '';
+                    } else {
+                        setOnInsertData['email'] = `${uid}@mobile.worker`;
+                    }
+                } else {
+                    setOnInsertData['email'] = `${uid}@mobile.worker`;
+                }
+            } catch (fbError) {
+                setOnInsertData['email'] = `${uid}@mobile.worker`;
+            }
+        }
 
         const updatedUser = await User.findOneAndUpdate(
             { uid: uid },
-            { $set: updateData },
+            { 
+                $set: updateData,
+                ...(Object.keys(setOnInsertData).length > 0 && { $setOnInsert: setOnInsertData })
+            },
             { new: true, upsert: true, setDefaultsOnInsert: true }
         );
 
-        res.status(200).json({ message: `${platform} cookies updated successfully` });
+        // Auto-retry fallback jobs that failed due to cookie issues
+        const JobV2 = require('../models/JobV2');
+        await JobV2.updateMany(
+            { platform: platform.toLowerCase(), resolutionStatus: 'fallback' },
+            { $set: { resolutionStatus: 'pending', isLive: false } }
+        );
+
+        res.status(200).json({ message: `${platform} cookies updated successfully. Retrying any failed jobs.` });
     } catch (error) {
         console.error('[V2 Mobile API] Error updating cookies:', error);
         res.status(500).json({ message: error.message });

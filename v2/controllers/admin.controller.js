@@ -16,7 +16,7 @@ module.exports._ExtractionAccount = ExtractionAccount;
 
 exports.createJob = async (req, res) => {
     try {
-        const { targetLink, platform, actionType, maxCount, isVip, comments } = req.body;
+        const { targetLink, platform, actionType, type, linkTypeName, maxCount, isVip, comments } = req.body;
         
         if (!targetLink || !platform || !actionType || !maxCount) {
             return res.status(400).json({ message: "Missing required fields" });
@@ -26,9 +26,11 @@ exports.createJob = async (req, res) => {
             targetLink,
             platform: platform.toLowerCase(),
             actionType: actionType.toLowerCase(),
+            type: type || 'post',
+            linkTypeName: linkTypeName || 'Like',
             maxCount: parseInt(maxCount),
             isVip: isVip || false,
-            comments: Array.isArray(comments) ? comments : [],
+            comments: Array.isArray(comments) ? comments.filter(c => c.trim().length > 0) : [],
             creatorId: "----admin----",
             isLive: false, // It will be live once ID is resolved
             resolutionStatus: 'pending' // Tell worker to resolve it
@@ -67,7 +69,13 @@ exports.saveCookies = async (req, res) => {
             { upsert: true, new: true }
         );
 
-        res.status(200).json({ message: `${platform} cookies saved successfully.` });
+        // Auto-retry fallback jobs that failed due to cookie issues
+        await JobV2.updateMany(
+            { platform: platform.toLowerCase(), resolutionStatus: 'fallback' },
+            { $set: { resolutionStatus: 'pending', isLive: false } }
+        );
+
+        res.status(200).json({ message: `${platform} cookies saved successfully. Retrying any failed jobs.` });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -146,10 +154,70 @@ exports.setExtractionAccount = async (req, res) => {
             { upsert: true, new: true }
         );
 
+        // Auto-retry fallback jobs that failed due to cookie issues
+        await JobV2.updateMany(
+            { platform: platform.toLowerCase(), resolutionStatus: 'fallback' },
+            { $set: { resolutionStatus: 'pending', isLive: false } }
+        );
+
         res.status(200).json({
             message: `Extraction account for ${platform} set to ${user.email}`,
             account
         });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+exports.getJobById = async (req, res) => {
+    try {
+        const job = await JobV2.findById(req.params.id);
+        if (!job) return res.status(404).json({ message: "Job not found" });
+        res.status(200).json(job);
+    } catch (error) {
+        console.error("Error in getJobById:", error);
+        res.status(500).json({ message: error.message });
+    }
+};
+
+exports.updateJobStatus = async (req, res) => {
+    try {
+        const { status } = req.body;
+        if (!['Active', 'Paused', 'Stopped'].includes(status)) {
+            return res.status(400).json({ message: "Invalid status. Must be Active, Paused, or Stopped" });
+        }
+        
+        const job = await JobV2.findByIdAndUpdate(
+            req.params.id,
+            { status },
+            { new: true }
+        );
+        
+        if (!job) return res.status(404).json({ message: "Job not found" });
+        res.status(200).json(job);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+exports.deleteJob = async (req, res) => {
+    try {
+        const job = await JobV2.findByIdAndDelete(req.params.id);
+        if (!job) return res.status(404).json({ message: "Job not found" });
+        res.status(200).json({ message: "Job deleted successfully" });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+exports.bulkDeleteJobs = async (req, res) => {
+    try {
+        const { jobIds } = req.body;
+        if (!Array.isArray(jobIds) || jobIds.length === 0) {
+            return res.status(400).json({ message: "jobIds array is required" });
+        }
+        await JobV2.deleteMany({ _id: { $in: jobIds } });
+        res.status(200).json({ message: "Jobs deleted successfully" });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }

@@ -41,26 +41,62 @@ class JobWorker {
                 console.log(`[Job Worker] Resolving Target ID for Job: ${job.jobId}`);
                 
                 try {
-                    // Fetch Cookies
-                    const cookieDoc = await AdminCookie.findOne({ platform: job.platform });
-                    const cookieString = cookieDoc ? cookieDoc.cookieString : '';
+                    let resolvedId = null;
+                    let triedAdmin = false;
+                    let triedExtraction = false;
                     
-                    if (!cookieString) {
-                        job.resolutionStatus = 'failed';
-                        job.resolutionError = 'No admin cookies found for platform';
-                        await job.save();
-                        console.error(`[Job Worker] No cookies for ${job.platform}`);
-                        continue;
+                    // 1. Try AdminCookie first
+                    const cookieDoc = await AdminCookie.findOne({ platform: job.platform });
+                    const adminCookieString = cookieDoc ? cookieDoc.cookieString : '';
+                    if (adminCookieString) {
+                        triedAdmin = true;
+                        console.log(`[Job Worker] Trying AdminCookie for ${job.platform}`);
+                        resolvedId = await TargetResolver.resolve(job.platform, job.targetLink, job.actionType, adminCookieString);
+                    }
+                    
+                    // 2. Fallback to ExtractionAccount if AdminCookie failed (or was empty)
+                    if (!resolvedId) {
+                        const ExtractionAccount = mongoose.models.ExtractionAccount;
+                        const User = mongoose.models.User;
+                        let extractionCookieString = '';
+                        if (ExtractionAccount && User) {
+                            const exAcc = await ExtractionAccount.findOne({ platform: job.platform });
+                            if (exAcc && exAcc.userId) {
+                                const worker = await User.findById(exAcc.userId);
+                                if (worker) {
+                                    extractionCookieString = job.platform === 'instagram' ? worker.instagramCookies : worker.facebookCookies;
+                                }
+                            }
+                        }
+                        if (extractionCookieString) {
+                            triedExtraction = true;
+                            if (triedAdmin) {
+                                console.log(`[Job Worker] AdminCookie failed. Trying ExtractionAccount fallback for ${job.platform}`);
+                            } else {
+                                console.log(`[Job Worker] Using ExtractionAccount for ${job.platform}`);
+                            }
+                            resolvedId = await TargetResolver.resolve(job.platform, job.targetLink, job.actionType, extractionCookieString);
+                        }
+                    }
+                    
+                    if (!resolvedId) {
+                        if (!triedAdmin && !triedExtraction) {
+                            job.resolutionStatus = 'failed';
+                            job.resolutionError = 'No extraction account or admin cookies found for platform';
+                            await job.save();
+                            console.error(`[Job Worker] No cookies available for ${job.platform}`);
+                            continue;
+                        } else {
+                            console.error(`[Job Worker] Failed to resolve Target ID for ${job.jobId} (Link: ${job.targetLink}) after trying available cookies. Proceeding with Fallback Mode.`);
+                            job.resolutionError = 'TargetResolver returned null for all available cookies - Sent as Fallback Script';
+                        }
                     }
 
-                    // Resolve
-                    const resolvedId = await TargetResolver.resolve(job.platform, job.targetLink, job.actionType, cookieString);
+                    // Success or Fallback
+                    job.resolutionStatus = resolvedId ? 'resolved' : 'fallback';
+                    job.isLive = true;
                     
                     if (resolvedId) {
-                        // Success!
-                        job.resolutionStatus = 'resolved';
-                        job.isLive = true;
-                        
                         if (job.platform === 'facebook') {
                             job.target_id = resolvedId;
                         } else if (job.platform === 'instagram') {
@@ -70,20 +106,17 @@ class JobWorker {
                                 job.mediaId = resolvedId;
                             }
                         }
-                        
-                        await job.save();
+                    }
+                    
+                    await job.save();
+                    
+                    if (resolvedId) {
                         console.log(`[Job Worker] Successfully resolved ${job.jobId} -> Target ID: ${resolvedId}`);
-                        
-                        // Push to queue
-                        if (this.jobQueue) {
-                            this.jobQueue.addCampaign(job);
-                        }
-                    } else {
-                        // Failed to resolve
-                        job.resolutionStatus = 'failed';
-                        job.resolutionError = 'TargetResolver returned null (Check URL or Cookies)';
-                        await job.save();
-                        console.error(`[Job Worker] Failed to resolve Target ID for ${job.jobId}`);
+                    }
+                    
+                    // Push to queue in BOTH cases
+                    if (this.jobQueue) {
+                        this.jobQueue.addCampaign(job);
                     }
                 } catch (error) {
                     job.resolutionStatus = 'failed';

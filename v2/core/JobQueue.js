@@ -116,20 +116,24 @@ class JobQueue {
             // Increment their pending jobs tracker
             InMemoryManager.incrementPending(user.userId);
             
-            // Emit directly to the specific user's socket
-            this.io.to(user.socketId).emit('job_assigned', {
-                jobId: job.jobId,
-                link: job.targetLink,
-                linkTypeName: job.linkTypeName || job.actionType,
-                likeCount: job.likeCount,
-                maxCount: job.maxCount,
-                isLive: job.isLive !== false, // Default to true if not defined
-                isVip: job.isVip,
-                target_id: job.target_id,
-                mediaId: job.mediaId,
-                userPk: job.userPk,
-                comments: job.comments || []
-            });
+            const payload = {
+                orders: [{
+                    jobId: job.jobId,
+                    link: job.targetLink,
+                    linkTypeName: job.linkTypeName || job.actionType,
+                    likeCount: job.likeCount,
+                    maxCount: job.maxCount,
+                    isLive: job.isLive !== false, // Default to true if not defined
+                    isVip: job.isVip,
+                    target_id: job.target_id,
+                    mediaId: job.mediaId,
+                    userPk: job.userPk,
+                    comments: job.comments || []
+                }]
+            };
+
+            this.io.to(user.socketId).emit('job_assigned', payload);
+            console.log(`[Socket.IO] Emitted 'job_assigned' to user ${user.userId}:`, JSON.stringify(payload, null, 2));
         }
         
         console.log(`[V2 Queue] Dispatched job ${job.jobId} to ${eligibleUsers.length} users.`);

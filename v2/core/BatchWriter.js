@@ -16,13 +16,14 @@ class BatchWriter {
     /**
      * Add a successful action to the buffer instead of writing immediately
      */
-    static addActionSuccess(jobId, userId) {
+    static addActionSuccess(jobId, userId, reason = '') {
         if (!this.initialized) this.init();
 
-        if (!this.buffer.has(jobId)) {
-            this.buffer.set(jobId, new Set());
+        const key = jobId + "|||" + reason;
+        if (!this.buffer.has(key)) {
+            this.buffer.set(key, new Set());
         }
-        this.buffer.get(jobId).add(userId);
+        this.buffer.get(key).add(userId);
     }
 
     /**
@@ -35,13 +36,16 @@ class BatchWriter {
         this.buffer.clear(); // Reset immediately to capture new incoming requests
 
         try {
-            for (const [jobId, usersSet] of currentBuffer.entries()) {
+            for (const [key, usersSet] of currentBuffer.entries()) {
+                const parts = key.split("|||");
+                const jobId = parts[0];
+                const reason = parts[1] || '';
                 const userIds = Array.from(usersSet);
                 
                 // 1. Bulk Update JobActionV2
                 await JobActionV2.updateMany(
                     { jobId: jobId, userId: { $in: userIds }, status: 'pending' },
-                    { $set: { status: 'completed' } }
+                    { $set: { status: 'completed', reason: reason } }
                 );
 
                 // 2. Bulk Update JobV2 (safely with $expr)

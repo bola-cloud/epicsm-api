@@ -127,7 +127,8 @@ exports.GetOnlineUsersLength = async (req, res) => {
             return res.status(401).json({ message: 'Unauthorized' });
         }
 
-        const onlineUsers = await Ping.countDocuments();
+        const InMemoryManager = require('../../v2/core/InMemoryManager');
+        const onlineUsers = InMemoryManager.getActiveCount();
 
         res.status(200).json({
             onlineUsers: onlineUsers

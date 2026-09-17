@@ -35,6 +35,10 @@ const jobV2Schema = new mongoose.Schema({
         type: String,
         default: null
     },
+    type: {
+        type: String,
+        default: null
+    },
     maxCount: {
         type: Number,
         required: true
@@ -61,7 +65,7 @@ const jobV2Schema = new mongoose.Schema({
     },
     resolutionStatus: {
         type: String,
-        enum: ['resolved', 'pending', 'failed'],
+        enum: ['resolved', 'pending', 'failed', 'fallback'],
         default: 'resolved'
     },
     resolutionError: {

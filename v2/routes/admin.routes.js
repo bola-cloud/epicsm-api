@@ -7,6 +7,10 @@ const adminController = require('../controllers/admin.controller');
 
 router.post('/jobs', adminController.createJob);
 router.get('/jobs', adminController.getJobs);
+router.get('/jobs/:id', adminController.getJobById);
+router.put('/jobs/:id/status', adminController.updateJobStatus);
+router.delete('/jobs/:id', adminController.deleteJob);
+router.post('/jobs/bulk-delete', adminController.bulkDeleteJobs);
 
 router.post('/cookies', adminController.saveCookies);
 router.get('/cookies', adminController.getCookiesStatus);

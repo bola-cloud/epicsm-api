@@ -27,6 +27,10 @@ const jobActionV2Schema = new mongoose.Schema({
         enum: ['pending', 'completed', 'completed_externally', 'failed', 'timeout'],
         default: 'pending'
     },
+    reason: {
+        type: String,
+        default: ''
+    },
     createdAt: {
         type: Date,
         default: Date.now

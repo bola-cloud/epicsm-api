@@ -1,4 +1,5 @@
 const socketIo = require('socket.io');
+const { instrument } = require("@socket.io/admin-ui");
 const jwt = require('jsonwebtoken');
 const InMemoryManager = require('../core/InMemoryManager');
 const JobActionV2 = require('../models/JobActionV2');
@@ -19,6 +20,12 @@ class SocketManager {
             transports: ['websocket'],    // Force WebSocket only, skip polling
             upgradeTimeout: 10000,
             connectTimeout: 10000,
+        });
+
+        // Initialize Admin UI
+        instrument(this.io, {
+            auth: false,
+            mode: "development",
         });
 
         this.jobQueue = jobQueue;
@@ -82,8 +89,11 @@ class SocketManager {
             });
 
             // Event: User completed or failed the job (Legacy Mobile App uses 'order_result')
-            socket.on('order_result', async (data, ack) => {
+            socket.on('order_result', async (payload, ack) => {
+                    console.log(`[V2 Socket] Received order_result from ${userId}:`, payload);
                 try {
+                    const data = Array.isArray(payload) ? payload[0] : payload;
+                    if (!data) return;
                     const { jobId, success, reason } = data;
 
                     if (success === true) {
@@ -91,13 +101,14 @@ class SocketManager {
                         const pendingAction = await JobActionV2.findOne({ jobId, userId, status: 'pending' });
 
                         if (!pendingAction) {
+                            console.log(`[V2 Socket] Action not pending for ${jobId} / ${userId}`);
                             if (typeof ack === 'function') ack({ success: false, reason: 'Action expired or already processed' });
                             return;
                         }
 
                         // 2. Speed Hack / Botting Protection (Time Validation)
                         const timeElapsed = Date.now() - new Date(pendingAction.createdAt).getTime();
-                        if (timeElapsed < 2500) {
+                        if (timeElapsed < 500) {
                             console.warn(`[V2 Socket] Bot detected! User ${userId} responded in ${timeElapsed}ms for job ${jobId}`);
                             if (typeof ack === 'function') ack({ success: false, reason: 'Action performed too fast. Suspicious activity.' });
                             return;
@@ -105,7 +116,8 @@ class SocketManager {
 
                         // 3. Delegate to BatchWriter instead of updating DB directly
                         const BatchWriter = require('../core/BatchWriter');
-                        BatchWriter.addActionSuccess(jobId, userId);
+                        console.log(`[V2 Socket] Calling BatchWriter for ${jobId} / ${userId} (reason: ${reason})`);
+                        BatchWriter.addActionSuccess(jobId, userId, reason);
 
                         // Free up the user's pending jobs slot immediately in Memory
                         InMemoryManager.decrementPending(userId);
@@ -116,13 +128,13 @@ class SocketManager {
                         if (reason === 'already_done' || reason === 'direct_follow_already_done' || reason === 'direct_like_already_done') {
                             await JobActionV2.findOneAndUpdate(
                                 { jobId, userId },
-                                { status: 'completed_externally' }
+                                { status: 'completed_externally', reason: reason }
                             );
                             InMemoryManager.decrementPending(userId);
                         } else {
                             await JobActionV2.findOneAndUpdate(
                                 { jobId, userId },
-                                { status: 'failed' }
+                                { status: 'failed', reason: reason }
                             );
                             InMemoryManager.decrementPending(userId);
                         }
