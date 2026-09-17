@@ -1,0 +1,86 @@
+=== TargetResolver Test Results ===
+
+Testing Link 1/12:
+URL: https://www.facebook.com/zezo.hossam.56
+Type: AddFriend
+Expected ID: None (Missing in file)
+Extracted ID: 100003735183891
+Status: ❌ MISMATCH
+--------------------------------------------------
+Testing Link 2/12:
+URL: https://m.facebook.com/leomessi/
+Type: FollowAccount
+Expected ID: 100044447978953
+Extracted ID: 100044447978953
+Status: ✅ MATCH
+--------------------------------------------------
+Testing Link 3/12:
+URL: https://www.facebook.com/groups/3543247559271756
+Type: JoinGroup
+Expected ID: None (Missing in file)
+Extracted ID: null
+Status: ✅ MATCH
+--------------------------------------------------
+Testing Link 4/12:
+URL: https://m.facebook.com/photo.php?fbid=1615690693258526
+Type: Like
+Expected ID: 100044528315651_1615691583258437
+Extracted ID: null
+Status: ❌ MISMATCH
+--------------------------------------------------
+Testing Link 5/12:
+URL: https://m.facebook.com/watch/?v=1665104168953772
+Type: Love
+Expected ID: 1616020456558883
+Extracted ID: 1616020456558883
+Status: ✅ MATCH
+--------------------------------------------------
+Testing Link 6/12:
+URL: https://m.facebook.com/story.php?story_fbid=1015998841442001&id=100090956834480
+Type: Care
+Expected ID: 100090956834480_1015998841442001
+Extracted ID: null
+Status: ❌ MISMATCH
+--------------------------------------------------
+Testing Link 7/12:
+URL: https://m.facebook.com/reel/2026690491566753/?referral_source=reshare_feed_unit
+Type: Haha
+Expected ID: 1465054465635144
+Extracted ID: 1465054465635144
+Status: ✅ MATCH
+--------------------------------------------------
+Testing Link 8/12:
+URL: https://m.facebook.com/reel/2026690491566753/?referral_source=reshare_feed_unit
+Type: Wow
+Expected ID: 2026690491566753
+Extracted ID: 1465054465635144
+Status: ❌ MISMATCH
+--------------------------------------------------
+Testing Link 9/12:
+URL: https://m.facebook.com/story.php?story_fbid=122173087220529472&id=61565884186477
+Type: Sad
+Expected ID: 122173087220529472
+Extracted ID: null
+Status: ❌ MISMATCH
+--------------------------------------------------
+Testing Link 10/12:
+URL: https://m.facebook.com/photo.php?fbid=122107639448529472
+Type: Angry
+Expected ID: 122107639448529472
+Extracted ID: null
+Status: ❌ MISMATCH
+--------------------------------------------------
+Testing Link 11/12:
+URL: https://www.instagram.com/leomessi/p/DZifppZj_cB/
+Type: InstaLike
+Expected ID: 3918833827158423297
+Extracted ID: null
+Status: ❌ MISMATCH
+--------------------------------------------------
+Testing Link 12/12:
+URL: https://www.instagram.com/leomessi/
+Type: InstaFollowAccount
+Expected ID: 427553890
+Extracted ID: null
+Status: ❌ MISMATCH
+--------------------------------------------------
