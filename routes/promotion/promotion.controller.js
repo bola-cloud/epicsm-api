@@ -17,17 +17,30 @@ async function updateDailyRewardForAllUsers(newDailyRewardValue) {
     const usersRef = db.collection('users');
     const snapshot = await usersRef.get();
 
-    // Create a batch
-    const batch = db.batch();
+    // Firestore allows maximum 500 operations per batch
+    const MAX_BATCH_SIZE = 500;
+    const docs = snapshot.docs;
+    const chunks = [];
 
-    // Add update operations to batch
-    snapshot.docs.forEach(doc => {
-        batch.update(doc.ref, { dailyRewards: newDailyRewardValue });
-    });
+    // Split documents into chunks of 500
+    for (let i = 0; i < docs.length; i += MAX_BATCH_SIZE) {
+        chunks.push(docs.slice(i, i + MAX_BATCH_SIZE));
+    }
 
-    // Commit the batch
-    await batch.commit();
-    console.log(`Updated dailyReward to ${newDailyRewardValue} for ${snapshot.size} users`);
+    // Process each chunk
+    for (let i = 0; i < chunks.length; i++) {
+        const chunk = chunks[i];
+        const batch = db.batch();
+
+        chunk.forEach(doc => {
+            batch.update(doc.ref, { dailyRewards: newDailyRewardValue });
+        });
+
+        await batch.commit();
+        console.log(`Committed chunk ${i + 1}/${chunks.length} - Updated ${chunk.length} users with dailyReward ${newDailyRewardValue}`);
+    }
+
+    console.log(`Successfully updated dailyReward to ${newDailyRewardValue} for total ${snapshot.size} users`);
 }
 
 exports.getPromotion = async (req, res) => {
