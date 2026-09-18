@@ -5,7 +5,7 @@ const InMemoryManager = require('./InMemoryManager');
 /**
  * RefillManager
  * 
- * Runs a cron job every minute to check for VIP jobs that haven't reached maxCount.
+ * Runs a cron job every minute to check for VIP jobs (up to 100%) and normal jobs (up to 75%).
  * Implements Exponential Backoff Delay to avoid querying the DB for dead jobs every minute.
  */
 class RefillManager {
@@ -33,16 +33,32 @@ class RefillManager {
 
             const now = new Date();
 
-            // Find VIP jobs that are Active, haven't reached maxCount, 
+            // Find jobs that are Active,
             // and either have no nextRefillAttempt set, or the time has passed.
+            // VIP jobs are refilled until 100% (maxCount).
+            // Normal jobs are refilled until 75% of maxCount.
             const jobsToRefill = await JobV2.find({
                 status: 'Active',
-                isVip: true,
-                $expr: { $lt: ["$likeCount", "$maxCount"] },
                 $or: [
                     { nextRefillAttempt: null },
                     { nextRefillAttempt: { $lte: now } }
-                ]
+                ],
+                $expr: {
+                    $or: [
+                        { 
+                            $and: [
+                                { $eq: ["$isVip", true] },
+                                { $lt: ["$likeCount", "$maxCount"] }
+                            ]
+                        },
+                        {
+                            $and: [
+                                { $ne: ["$isVip", true] },
+                                { $lt: ["$likeCount", { $multiply: ["$maxCount", 0.75] }] }
+                            ]
+                        }
+                    ]
+                }
             });
 
             for (const job of jobsToRefill) {
