@@ -48,8 +48,82 @@ exports.createJob = async (req, res) => {
 
 exports.getJobs = async (req, res) => {
     try {
-        const jobs = await JobV2.find().sort({ createdAt: -1 }).limit(100);
-        res.status(200).json(jobs);
+        const { 
+            page = 1, 
+            limit = 20, 
+            searchQuery, 
+            platformFilter, 
+            statusFilter, 
+            errorFilter, 
+            vipFilter, 
+            startDate, 
+            endDate 
+        } = req.query;
+
+        const query = {};
+
+        // Search Query (Regex match against multiple fields)
+        if (searchQuery) {
+            const normalizedQuery = searchQuery.toLowerCase().replace(/^(https?:\/\/)?(www\.|m\.)?/g, "");
+            query.$or = [
+                { targetLink: { $regex: normalizedQuery, $options: 'i' } },
+                { target_id: { $regex: searchQuery, $options: 'i' } },
+                { mediaId: { $regex: searchQuery, $options: 'i' } },
+                { userPk: { $regex: searchQuery, $options: 'i' } }
+            ];
+        }
+
+        // Platform Filter
+        if (platformFilter && platformFilter !== 'All') {
+            query.platform = platformFilter.toLowerCase();
+        }
+
+        // Status Filter
+        if (statusFilter && statusFilter !== 'All') {
+            query.status = { $regex: `^${statusFilter}$`, $options: 'i' };
+        }
+
+        // Error Filter
+        if (errorFilter && errorFilter !== 'All') {
+            if (errorFilter === 'Errors') {
+                query.resolutionStatus = 'fallback';
+            } else if (errorFilter === 'No Errors') {
+                query.resolutionStatus = { $ne: 'fallback' };
+            }
+        }
+
+        // VIP Filter
+        if (vipFilter && vipFilter !== 'All') {
+            if (vipFilter === 'VIP') query.isVip = true;
+            if (vipFilter === 'Normal') query.isVip = { $ne: true };
+        }
+
+        // Date Range Filter
+        if (startDate || endDate) {
+            query.createdAt = {};
+            if (startDate) query.createdAt.$gte = new Date(startDate);
+            if (endDate) {
+                const end = new Date(endDate);
+                end.setHours(23, 59, 59, 999);
+                query.createdAt.$lte = end;
+            }
+        }
+
+        const skip = (parseInt(page) - 1) * parseInt(limit);
+        const limitNum = parseInt(limit);
+
+        const totalCount = await JobV2.countDocuments(query);
+        const jobs = await JobV2.find(query)
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(limitNum);
+
+        res.status(200).json({
+            jobs,
+            totalCount,
+            totalPages: Math.ceil(totalCount / limitNum),
+            currentPage: parseInt(page)
+        });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -218,6 +292,18 @@ exports.bulkDeleteJobs = async (req, res) => {
         }
         await JobV2.deleteMany({ _id: { $in: jobIds } });
         res.status(200).json({ message: "Jobs deleted successfully" });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+exports.pauseAllJobs = async (req, res) => {
+    try {
+        const result = await JobV2.updateMany(
+            { status: { $in: ['Active', 'active'] } },
+            { $set: { status: 'Paused' } }
+        );
+        res.status(200).json({ message: `Successfully paused ${result.modifiedCount} active jobs.` });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
