@@ -60,7 +60,7 @@ exports.CreateUser = async (req, res) => {
     }
 };
 
-// Get all users from firebase
+// Get all users from MongoDB (with full pagination and formatting)
 exports.GetFirebaseUsers = async (req, res) => {
     try {
         const isUser = await authController.getUserByToken(req, res);
@@ -72,22 +72,30 @@ exports.GetFirebaseUsers = async (req, res) => {
         const pageSize = parseInt(limit, 10);
         const pageNumber = parseInt(page, 10);
 
-        const usersRef = db.collection('users');
+        const totalUsers = await User.countDocuments();
+        const mongoUsers = await User.find()
+            .sort({ created: -1 })
+            .skip((pageNumber - 1) * pageSize)
+            .limit(pageSize);
 
-        // Get total count for pagination
-        const totalCountSnapshot = await usersRef.count().get();
-        const totalUsers = totalCountSnapshot.data().count;
-
-        // Get paginated users
-        const query = usersRef
-            .orderBy('created', 'desc')
-            .limit(pageSize)
-            .offset((pageNumber - 1) * pageSize);
-
-        const snapshot = await query.get();
-        const users = snapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data(),
+        const users = mongoUsers.map(u => ({
+            id: u.uid || u._id.toString(),
+            _id: u._id,
+            uid: u.uid,
+            email: u.email,
+            name: u.name || `${u.prenom || ''} ${u.nom || ''}`.trim(),
+            nom: u.nom,
+            prenom: u.prenom,
+            photo: u.photo,
+            dollars: u.dollars || 0,
+            coins: u.coins !== undefined ? u.coins : (u.dollars || 0),
+            dailyRewards: u.dailyRewards || 50,
+            banned: Boolean(u.banned),
+            isVip: Boolean(u.isVip),
+            role: u.role || 'client',
+            created: u.created,
+            lastSignIn: u.lastSignIn,
+            fcm: u.fcm || ''
         }));
 
         return res.status(200).json({
@@ -99,7 +107,7 @@ exports.GetFirebaseUsers = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Error fetching users:', error);
+        console.error('Error fetching users from MongoDB:', error);
         return res.status(500).json({
             message: 'Failed to fetch users',
             error: error.message
@@ -107,7 +115,7 @@ exports.GetFirebaseUsers = async (req, res) => {
     }
 };
 
-// Search Users Endpoint - Dedicated to search functionality
+// Search Users Endpoint - Dedicated to MongoDB search functionality
 exports.SearchFirebaseUsers = async (req, res) => {
     try {
         const isUser = await authController.getUserByToken(req, res);
@@ -125,58 +133,53 @@ exports.SearchFirebaseUsers = async (req, res) => {
             });
         }
 
-        const usersRef = db.collection('users');
-        const searchTerm = query.toLowerCase().trim();
+        const rawTerm = query.trim();
+        const safeRegex = new RegExp(rawTerm.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&'), 'i');
 
-        // Composite query for both email and name
-        const [emailSnapshot, nameSnapshot] = await Promise.all([
-            // Search by email
-            usersRef
-                .where('email', '>=', searchTerm)
-                .where('email', '<=', searchTerm + '\uf8ff')
-                .orderBy('email')
-                .get(),
+        const searchFilter = {
+            $or: [
+                { email: safeRegex },
+                { name: safeRegex },
+                { uid: rawTerm }
+            ]
+        };
 
-            // Search by normalized name
-            usersRef
-                .where('nameNormalized', '>=', searchTerm)
-                .where('nameNormalized', '<=', searchTerm + '\uf8ff')
-                .orderBy('nameNormalized')
-                .get()
-        ]);
+        const totalUsers = await User.countDocuments(searchFilter);
+        const mongoUsers = await User.find(searchFilter)
+            .sort({ created: -1 })
+            .skip((pageNumber - 1) * pageSize)
+            .limit(pageSize);
 
-        // Combine and deduplicate results
-        const emailResults = emailSnapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
+        const users = mongoUsers.map(u => ({
+            id: u.uid || u._id.toString(),
+            _id: u._id,
+            uid: u.uid,
+            email: u.email,
+            name: u.name || `${u.prenom || ''} ${u.nom || ''}`.trim(),
+            nom: u.nom,
+            prenom: u.prenom,
+            photo: u.photo,
+            dollars: u.dollars || 0,
+            coins: u.coins !== undefined ? u.coins : (u.dollars || 0),
+            dailyRewards: u.dailyRewards || 50,
+            banned: Boolean(u.banned),
+            isVip: Boolean(u.isVip),
+            role: u.role || 'client',
+            created: u.created,
+            lastSignIn: u.lastSignIn,
+            fcm: u.fcm || ''
         }));
-
-        const nameResults = nameSnapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-        }));
-
-        // Deduplicate results based on user ID
-        const combinedResults = [...emailResults, ...nameResults];
-        const uniqueResults = Array.from(
-            new Map(combinedResults.map(item => [item.id, item])).values()
-        );
-
-        // Manual pagination of results
-        const startIndex = (pageNumber - 1) * pageSize;
-        const endIndex = startIndex + pageSize;
-        const paginatedResults = uniqueResults.slice(startIndex, endIndex);
 
         return res.status(200).json({
-            users: paginatedResults,
+            users,
             page: pageNumber,
             limit: pageSize,
-            totalPages: Math.ceil(uniqueResults.length / pageSize),
-            totalUsers: uniqueResults.length,
+            totalPages: Math.ceil(totalUsers / pageSize),
+            totalUsers,
         });
 
     } catch (error) {
-        console.error('Error searching users:', error);
+        console.error('Error searching users in MongoDB:', error);
         return res.status(500).json({
             message: 'Failed to search users',
             error: error.message
@@ -188,75 +191,87 @@ exports.SearchFirebaseUsers = async (req, res) => {
 exports.GetUsersByLastSignIn = async (req, res) => {
     try {
         const isUser = await authController.getUserByToken(req, res);
-
         if (!isUser) {
             return res.status(401).json({ message: 'Unauthorized' });
         }
 
-        const usersRef = db.collection('users');
+        const mongoUsers = await User.find()
+            .sort({ lastSignIn: -1 })
+            .limit(6);
 
-        const snapshot = await usersRef.orderBy('lastSignIn', 'desc').limit(6).get();
-
-        if (snapshot.empty) {
-            return res.status(404).json({ message: 'No users found' });
-        }
-
-        const users = [];
-        snapshot.forEach(doc => {
-            users.push({ id: doc.id, ...doc.data() });
-        });
+        const users = mongoUsers.map(u => ({
+            id: u.uid || u._id.toString(),
+            _id: u._id,
+            uid: u.uid,
+            email: u.email,
+            name: u.name || `${u.prenom || ''} ${u.nom || ''}`.trim(),
+            photo: u.photo,
+            dollars: u.dollars || 0,
+            coins: u.coins !== undefined ? u.coins : (u.dollars || 0),
+            dailyRewards: u.dailyRewards || 50,
+            banned: Boolean(u.banned),
+            isVip: Boolean(u.isVip),
+            role: u.role || 'client',
+            created: u.created,
+            lastSignIn: u.lastSignIn
+        }));
 
         return res.status(200).json(users);
-
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
 };
 
-// Get users length from firebase
+// Get users length from MongoDB
 exports.GetFirebaseUsersLength = async (req, res) => {
     try {
         const isUser = await authController.getUserByToken(req, res);
-
         if (!isUser) {
             return res.status(401).json({ message: 'Unauthorized' });
         }
 
-        const usersRef = db.collection('users');
-
-        const totalCountSnapshot = await usersRef.count().get();
-        const totalUsers = totalCountSnapshot.data().count;
-
+        const totalUsers = await User.countDocuments();
         if (totalUsers === 0) {
             return res.status(404).json({ message: 'No users found' });
         }
 
         res.status(200).json(totalUsers);
     } catch (error) {
-        console.error('Error getting users count:', error);
+        console.error('Error getting users count from MongoDB:', error);
         res.status(500).json({ message: 'Internal server error' });
     }
 };
 
-// Get a user by id from firebase
+// Get a user by id from MongoDB (with fallback to Firestore)
 exports.GetFirebaseUserById = async (req, res) => {
     try {
         const isUser = await authController.getUserByToken(req, res);
-
         if (!isUser) {
             return res.status(401).json({ message: 'Unauthorized' });
         }
 
         const userId = req.params.id;
-        const userRef = db.collection('users').doc(userId);
-        const doc = await userRef.get();
-        if (!doc.exists) {
+        const query = userId.match(/^[0-9a-fA-F]{24}$/) ? { $or: [{ _id: userId }, { uid: userId }] } : { uid: userId };
+        let user = await User.findOne(query);
+
+        if (!user && db) {
+            try {
+                const userRef = db.collection('users').doc(userId);
+                const doc = await userRef.get();
+                if (doc.exists) {
+                    user = { id: doc.id, ...doc.data() };
+                }
+            } catch (fErr) {
+                console.warn('Firestore fallback fetch warning:', fErr.message);
+            }
+        }
+
+        if (!user) {
             return res.status(404).json({ message: 'User not found' });
         }
 
-        // Return the user data
-        const user = { id: doc.id, ...doc.data() };
-        res.status(200).json(user);
+        const result = user.toObject ? { id: user.uid || user._id.toString(), ...user.toObject() } : user;
+        res.status(200).json(result);
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -335,26 +350,26 @@ exports.DeleteUser = async (req, res) => {
     }
 };
 
-// Delete user from firestore
+// Delete user from MongoDB (and Firestore/Auth if available)
 exports.DeleteFirebaseUser = async (req, res) => {
     try {
         const isUser = await authController.getUserByToken(req, res);
-
         if (!isUser) {
             return res.status(401).json({ message: 'Unauthorized' });
         }
 
         const userId = req.params.id;
-        const userRef = db.collection('users').doc(userId);
-        const doc = await userRef.get();
+        const query = userId.match(/^[0-9a-fA-F]{24}$/) ? { $or: [{ _id: userId }, { uid: userId }] } : { uid: userId };
+        await User.findOneAndDelete(query);
 
-        if (!doc.exists) {
-            return res.status(404).json({ message: 'User not found' });
+        try {
+            if (db) {
+                await db.collection('users').doc(userId).delete();
+            }
+            await admin.auth().deleteUser(userId);
+        } catch (fErr) {
+            console.warn('Firebase delete user warning:', fErr.message);
         }
-
-        await userRef.delete();
-
-        await admin.auth().deleteUser(userId);
 
         res.status(200).json({ message: `User ${userId} has been deleted.` });
     } catch (error) {
@@ -362,21 +377,26 @@ exports.DeleteFirebaseUser = async (req, res) => {
     }
 };
 
-
 // Ban User
 exports.BanUser = async (req, res) => {
     try {
         const isUser = await authController.getUserByToken(req, res);
-
         if (!isUser) {
             return res.status(401).json({ message: 'Unauthorized' });
         }
 
         const userId = req.params.id;
-        await admin.auth().updateUser(userId, { disabled: true });
+        const query = userId.match(/^[0-9a-fA-F]{24}$/) ? { $or: [{ _id: userId }, { uid: userId }] } : { uid: userId };
+        await User.findOneAndUpdate(query, { $set: { banned: true } });
 
-        const userRef = admin.firestore().collection('users').doc(userId);
-        await userRef.update({ banned: true });
+        try {
+            await admin.auth().updateUser(userId, { disabled: true });
+            if (db) {
+                await db.collection('users').doc(userId).update({ banned: true });
+            }
+        } catch (fErr) {
+            console.warn('Firebase ban warning:', fErr.message);
+        }
 
         res.status(200).json({ message: `User ${userId} has been banned (disabled).` });
     } catch (error) {
@@ -385,21 +405,26 @@ exports.BanUser = async (req, res) => {
     }
 };
 
-
 // Unban User
 exports.UnbanUser = async (req, res) => {
     try {
         const isUser = await authController.getUserByToken(req, res);
-
         if (!isUser) {
             return res.status(401).json({ message: 'Unauthorized' });
         }
 
         const userId = req.params.id;
-        await admin.auth().updateUser(userId, { disabled: false });
+        const query = userId.match(/^[0-9a-fA-F]{24}$/) ? { $or: [{ _id: userId }, { uid: userId }] } : { uid: userId };
+        await User.findOneAndUpdate(query, { $set: { banned: false } });
 
-        const userRef = admin.firestore().collection('users').doc(userId);
-        await userRef.update({ banned: false });
+        try {
+            await admin.auth().updateUser(userId, { disabled: false });
+            if (db) {
+                await db.collection('users').doc(userId).update({ banned: false });
+            }
+        } catch (fErr) {
+            console.warn('Firebase unban warning:', fErr.message);
+        }
 
         res.status(200).json({ message: `User ${userId} has been unbanned (enabled).` });
     } catch (error) {
@@ -408,32 +433,42 @@ exports.UnbanUser = async (req, res) => {
     }
 };
 
-
 // Add Balance
 exports.AddBalanceToUser = async (req, res) => {
     try {
         const isUser = await authController.getUserByToken(req, res);
-
         if (!isUser) {
             return res.status(401).json({ message: 'Unauthorized' });
         }
 
         const userId = req.params.id;
         const { Balance } = req.body;
+        const numBalance = Number(Balance);
 
-        const userRef = db.collection('users').doc(userId);
-        const doc = await userRef.get();
-
-        if (!doc.exists) {
-            return res.status(404).json({ message: 'User not found' });
+        if (isNaN(numBalance)) {
+            return res.status(400).json({ message: 'Valid balance is required' });
         }
 
-        const currentDollars = doc.data().dollars || 0;
+        const query = userId.match(/^[0-9a-fA-F]{24}$/) ? { $or: [{ _id: userId }, { uid: userId }] } : { uid: userId };
+        const updatedUser = await User.findOneAndUpdate(
+            query,
+            { $inc: { dollars: numBalance, coins: numBalance } },
+            { new: true }
+        );
 
-        const newDollars = currentDollars + Balance;
+        try {
+            if (db) {
+                const userRef = db.collection('users').doc(userId);
+                const doc = await userRef.get();
+                if (doc.exists) {
+                    await userRef.update({ dollars: (doc.data().dollars || 0) + numBalance });
+                }
+            }
+        } catch (fErr) {
+            console.warn('Firestore add balance warning:', fErr.message);
+        }
 
-        await userRef.update({ dollars: newDollars });
-
+        const newDollars = updatedUser ? updatedUser.dollars : numBalance;
         res.status(200).json({ message: `User ${userId}'s balance updated to ${newDollars} dollars.` });
     } catch (error) {
         console.error('Error adding balance:', error);
@@ -453,19 +488,32 @@ exports.UpdateDailyReward = async (req, res) => {
 
         const userId = req.params.id;
         const { dailyRewards } = req.body;
+        const numReward = Number(dailyRewards);
 
-        const userRef = db.collection('users').doc(userId);
-        const doc = await userRef.get();
-
-        if (!doc.exists) {
-            return res.status(404).json({ message: 'User not found' });
+        if (isNaN(numReward) || numReward < 0) {
+            return res.status(400).json({ message: 'dailyRewards must be a valid positive number' });
         }
 
-        await userRef.update({ dailyRewards });
+        // 1. Update in Firestore (if available)
+        try {
+            if (db) {
+                const userRef = db.collection('users').doc(userId);
+                const doc = await userRef.get();
+                if (doc.exists) {
+                    await userRef.update({ dailyRewards: numReward });
+                }
+            }
+        } catch (fErr) {
+            console.error("Firestore update reward warning:", fErr.message);
+        }
 
-        res.status(200).json({ message: `User ${userId}'s dailyRewards updated to ${dailyRewards} dollars.` });
+        // 2. Update in MongoDB
+        const query = userId.match(/^[0-9a-fA-F]{24}$/) ? { _id: userId } : { uid: userId };
+        await User.findOneAndUpdate(query, { $set: { dailyRewards: numReward } });
+
+        res.status(200).json({ message: `User ${userId}'s dailyRewards updated to ${numReward}.` });
     } catch (error) {
-        console.error('Error adding balance:', error);
+        console.error('Error updating daily rewards:', error);
         res.status(500).json({ message: 'Internal Server Error' });
     }
 };

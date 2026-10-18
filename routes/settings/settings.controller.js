@@ -21,6 +21,8 @@ exports.getSettings = async (req, res) => {
                 mimicScroll: false,
                 rt: 0,
                 rrt: 0,
+                globalDailyReward: 50,
+                rewardDelayMinutes: 30,
             });
         }
 
@@ -32,18 +34,27 @@ exports.getSettings = async (req, res) => {
 
 exports.updateSettings = async (req, res) => {
     try {
-        const { executionMethod, reportErrors, reportHtml, mimicScroll, rt, rrt } = req.body;
+        const { executionMethod, reportErrors, reportHtml, mimicScroll, rt, rrt, globalDailyReward, rewardDelayMinutes } = req.body;
+
+        const updateData = {
+            executionMethod,
+            reportErrors,
+            reportHtml,
+            mimicScroll,
+            rt,
+            rrt
+        };
+
+        if (globalDailyReward !== undefined) {
+            updateData.globalDailyReward = Number(globalDailyReward);
+        }
+        if (rewardDelayMinutes !== undefined) {
+            updateData.rewardDelayMinutes = Number(rewardDelayMinutes);
+        }
 
         const settings = await Settings.findOneAndUpdate(
             {},
-            {
-                executionMethod,
-                reportErrors,
-                reportHtml,
-                mimicScroll,
-                rt,
-                rrt
-            },
+            updateData,
             { new: true, upsert: true }
         );
 

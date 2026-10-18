@@ -6,6 +6,7 @@ const userSchema = mongoose.Schema({
     uid: {
         type: String,
         default: "",
+        index: true,
     },
     email: {
         type: String,
@@ -61,6 +62,42 @@ const userSchema = mongoose.Schema({
     },
     isVip: {
         type: Boolean,
+    },
+    dollars: {
+        type: Number,
+        default: 0,
+        min: 0,
+    },
+    coins: {
+        type: Number,
+        default: 0,
+        min: 0,
+    },
+    dailyRewards: {
+        type: Number,
+        default: 50,
+    },
+    banned: {
+        type: Boolean,
+        default: false,
+    },
+    name: {
+        type: String,
+        default: "",
+    },
+    nameNormalized: {
+        type: String,
+        default: "",
+        index: true,
+    },
+    lastClaimedRewardAt: {
+        type: Date,
+        default: null,
+    },
+    migratedToV2: {
+        type: Boolean,
+        default: false,
+        index: true,
     },
     created: {
         type: Date,

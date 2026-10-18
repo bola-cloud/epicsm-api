@@ -23,9 +23,9 @@ const initV2 = (server) => {
     // 3. Initialize Refill Manager Cron Job
     refillManager = new RefillManager(jobQueue);
 
-    // 4. Initialize Zombie Sweep Cron Job
+    // 4. Initialize Zombie Sweep Cron Job & Reward Worker
     const CronTasks = require('./core/CronTasks');
-    CronTasks.init();
+    CronTasks.init(socketManager ? socketManager.io : null);
 
     // 5. Initialize Async Background Job Worker
     const { JobWorker } = require('./core/JobWorker');
@@ -54,7 +54,12 @@ const createNewJobV2 = async (jobData) => {
     }
 };
 
+const getSocketManager = () => socketManager;
+const getIO = () => (socketManager ? socketManager.io : null);
+
 module.exports = {
     initV2,
-    createNewJobV2
+    createNewJobV2,
+    getSocketManager,
+    getIO
 };

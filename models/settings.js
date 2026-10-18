@@ -27,6 +27,14 @@ const settingsSchema = new mongoose.Schema({
         type: Number,
         default: 0
     },
+    globalDailyReward: {
+        type: Number,
+        default: 50
+    },
+    rewardDelayMinutes: {
+        type: Number,
+        default: 30
+    },
     dictionary: {
         type: Map,
         of: [{

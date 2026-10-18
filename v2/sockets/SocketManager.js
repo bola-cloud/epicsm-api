@@ -76,6 +76,7 @@ class SocketManager {
     setupEvents() {
         this.io.on('connection', (socket) => {
             const userId = socket.user._id || socket.user.id;
+            socket.join(userId);
 
             // Wait for register_worker to actually register the user in Memory
             socket.on('register_worker', (payload) => {

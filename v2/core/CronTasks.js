@@ -1,13 +1,21 @@
 const cron = require('node-cron');
 const JobActionV2 = require('../models/JobActionV2');
 const InMemoryManager = require('./InMemoryManager');
+const RewardService = require('../services/rewardService');
 
 class CronTasks {
-    static init() {
-        // Run every 5 minutes
+    static init(io = null) {
+        this.io = io;
+
+        // Run every 5 minutes: sweep zombie jobs
         cron.schedule('*/5 * * * *', async () => {
             console.log('[V2 Cron] Sweeping Zombie Pending Jobs...');
             await this.sweepZombieJobs();
+        });
+
+        // Run every minute: process due rewards (30-minute delayed claims)
+        cron.schedule('* * * * *', async () => {
+            await RewardService.processDueRewards(this.io);
         });
     }
 
