@@ -177,7 +177,11 @@ class UserSyncService {
             }
         }
 
-        // 3. Brand new user! Create directly in MongoDB
+        // 3. Brand new user! Create directly in MongoDB with initial points from global Settings
+        const Settings = require('../../models/settings');
+        const globalSettings = await Settings.findOne();
+        const initialPoints = globalSettings?.globalDailyReward !== undefined ? Number(globalSettings.globalDailyReward) : 50;
+
         user = new User({
             uid,
             email: cleanEmail,
@@ -186,9 +190,9 @@ class UserSyncService {
             photo: photo || '',
             fcm: fcm || '',
             provider: 'Google',
-            coins: 0,
+            coins: initialPoints,
             dollars: 0,
-            dailyRewards: 50,
+            dailyRewards: initialPoints,
             banned: false,
             isVip: false,
             role: 'client',

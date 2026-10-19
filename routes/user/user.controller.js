@@ -43,6 +43,10 @@ exports.CreateUser = async (req, res) => {
 
         const { email, nom, prenom, fcm, photo, provider, role } = req.body;
 
+        const Settings = require('../../models/settings');
+        const globalSettings = await Settings.findOne();
+        const initialPoints = globalSettings?.globalDailyReward !== undefined ? Number(globalSettings.globalDailyReward) : 50;
+
         const newUser = new User({
             email,
             nom,
@@ -50,7 +54,9 @@ exports.CreateUser = async (req, res) => {
             fcm,
             photo,
             provider,
-            role
+            role,
+            coins: initialPoints,
+            dailyRewards: initialPoints
         });
 
         const user = await newUser.save();
