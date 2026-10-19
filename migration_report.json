@@ -1,0 +1,11 @@
+{
+  "timestamp": "2026-10-19T17:14:57.169Z",
+  "totalFirestoreUsers": 75371,
+  "initialMongoCount": 42398,
+  "finalMongoCount": 75380,
+  "totalProcessedThisRun": 33337,
+  "totalUpsertedThisRun": 32982,
+  "totalModifiedThisRun": 355,
+  "totalErrors": 0,
+  "durationSeconds": "44.5"
+}

@@ -35,6 +35,10 @@ const settingsSchema = new mongoose.Schema({
         type: Number,
         default: 30
     },
+    pointsPerDollar: {
+        type: Number,
+        default: 100
+    },
     dictionary: {
         type: Map,
         of: [{

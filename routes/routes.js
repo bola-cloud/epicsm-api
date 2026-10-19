@@ -21,6 +21,7 @@ router.use('/stats', require("./statistique/statistique.routes"));
 router.use('/settings', require("./settings/settings.routes"));
 router.use('/blocked', require("./blocked/blocked.routes"));
 router.use('/promotions', require("./promotion/promotion.routes"));
+router.use('/notifications', require("./notification/notification.routes"));
 
 
 // -------------------------------------------------------

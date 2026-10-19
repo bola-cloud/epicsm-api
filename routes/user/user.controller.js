@@ -482,6 +482,72 @@ exports.AddBalanceToUser = async (req, res) => {
     }
 };
 
+// Admin Exchange Dollars for User
+exports.AdminExchangeDollarsForUser = async (req, res) => {
+    try {
+        const isUser = await authController.getUserByToken(req, res);
+        if (!isUser) {
+            return res.status(401).json({ message: 'Unauthorized' });
+        }
+
+        const userId = req.params.id;
+        const query = userId.match(/^[0-9a-fA-F]{24}$/) ? { $or: [{ _id: userId }, { uid: userId }] } : { uid: userId };
+        const user = await User.findOne(query);
+
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        const currentDollars = Number(user.dollars) || 0;
+        if (currentDollars <= 0) {
+            return res.status(400).json({ message: 'المستخدم ليس لديه رصيد دولار للفك (رصيده 0$)' });
+        }
+
+        const { amount } = req.body || {};
+        let dollarsToExchange = currentDollars;
+        if (amount !== undefined && amount !== null && amount !== 'all') {
+            const parsed = Number(amount);
+            if (isNaN(parsed) || parsed <= 0) {
+                return res.status(400).json({ message: 'يرجى إدخال مبلغ دولار صالح' });
+            }
+            if (parsed > currentDollars) {
+                return res.status(400).json({ message: `المبلغ يتجاوز رصيد الدولار الحالي ($${currentDollars})` });
+            }
+            dollarsToExchange = parsed;
+        }
+
+        const Settings = require('../../models/settings');
+        const globalSettings = await Settings.findOne();
+        const pointsPerDollar = globalSettings?.pointsPerDollar || 100;
+
+        const pointsAwarded = Math.floor(dollarsToExchange * pointsPerDollar);
+
+        const updatedUser = await User.findOneAndUpdate(
+            query,
+            {
+                $inc: {
+                    dollars: -dollarsToExchange,
+                    coins: pointsAwarded
+                }
+            },
+            { new: true }
+        );
+
+        return res.status(200).json({
+            success: true,
+            message: `تم فك $${dollarsToExchange} بنجاح وإضافة ${pointsAwarded} نقطة لرصيد المستخدم!`,
+            user: {
+                uid: updatedUser.uid,
+                dollars: updatedUser.dollars,
+                coins: updatedUser.coins
+            }
+        });
+    } catch (error) {
+        console.error('Error in AdminExchangeDollarsForUser:', error);
+        return res.status(500).json({ message: error.message });
+    }
+};
+
 
 // Update DailyReward
 exports.UpdateDailyReward = async (req, res) => {

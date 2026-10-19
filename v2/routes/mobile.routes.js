@@ -23,6 +23,10 @@ router.get('/profile/:uid', UserV2Controller.mGetProfile);
 // Claim daily reward (immediate non-blocking 200 OK + delayed credit)
 router.post('/rewards/claim', UserV2Controller.mClaimDailyReward);
 
+// --- Dollar Exchange to Points ---
+router.get('/exchange-rate', UserV2Controller.mGetExchangeRate);
+router.post('/exchange-dollars', UserV2Controller.mExchangeDollars);
+
 // --- Jobs & Orders ---
 // Create a new V2 Job (e.g., from Mobile app)
 router.post('/create', MobileV2Controller.mCreateJobV2);

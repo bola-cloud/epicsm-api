@@ -63,6 +63,8 @@ router.put('/firestore/unban/:id', usersController.UnbanUser);
 
 
 router.put('/firestore/addbalance/:id', usersController.AddBalanceToUser);
+router.post('/exchange-dollars/:id', usersController.AdminExchangeDollarsForUser);
+router.put('/exchange-dollars/:id', usersController.AdminExchangeDollarsForUser);
 
 router.put('/firestore/updateReward/:id', usersController.UpdateDailyReward);
 

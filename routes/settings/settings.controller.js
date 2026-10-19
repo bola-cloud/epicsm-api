@@ -23,6 +23,7 @@ exports.getSettings = async (req, res) => {
                 rrt: 0,
                 globalDailyReward: 50,
                 rewardDelayMinutes: 30,
+                pointsPerDollar: 100,
             });
         }
 
@@ -34,7 +35,7 @@ exports.getSettings = async (req, res) => {
 
 exports.updateSettings = async (req, res) => {
     try {
-        const { executionMethod, reportErrors, reportHtml, mimicScroll, rt, rrt, globalDailyReward, rewardDelayMinutes } = req.body;
+        const { executionMethod, reportErrors, reportHtml, mimicScroll, rt, rrt, globalDailyReward, rewardDelayMinutes, pointsPerDollar } = req.body;
 
         const updateData = {
             executionMethod,
@@ -50,6 +51,9 @@ exports.updateSettings = async (req, res) => {
         }
         if (rewardDelayMinutes !== undefined) {
             updateData.rewardDelayMinutes = Number(rewardDelayMinutes);
+        }
+        if (pointsPerDollar !== undefined) {
+            updateData.pointsPerDollar = Number(pointsPerDollar);
         }
 
         const settings = await Settings.findOneAndUpdate(
