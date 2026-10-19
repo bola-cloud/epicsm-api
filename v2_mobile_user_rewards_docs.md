@@ -89,9 +89,8 @@ sequenceDiagram
 ```
 
 * **ما يفعله السيرفر:**
-  * **إذا كان المستخدم جديداً:** يتم إنشاء حسابه في MongoDB برصيد افتراضي 0، وقيمة المكافأة اليومية 50، دون أي حاجة للاتصال بـ Firestore.
-  * **إذا كان المستخدم قديماً ينتقل من V1 إلى V2 لأول مرة:** يقوم السيرفر تلقائياً بسحب رصيده ونقاطه السابقة من Firestore ونقلها إلى MongoDB واعتمادها للأبد.
-  * **إذا كان مستخدماً حالياً:** يقوم السيرفر بتحديث توكن الإشعارات `fcm` ووقت آخر ظهور `lastSignIn`.
+  * **إذا كان المستخدم جديداً يسجل لأول مرة:** يتم إنشاء حسابه في MongoDB ويمنحه السيرفر فورياً رصيد نقاط مبدئي مساوياً لقيمة `globalDailyReward` المحددة في الإعدادات (افتراضياً 50 نقطة)، ورصيد دولارات 0$.
+  * **إذا كان مستخدماً قديماً أو حالياً:** يقوم السيرفر بتحديث توكن الإشعارات `fcm` ووقت آخر ظهور `lastSignIn` وإرجاع رصيده المحدث.
 
 * **الاستجابة الناجحة (HTTP 200 OK):**
 ```json
@@ -103,7 +102,10 @@ sequenceDiagram
     "email": "user@gmail.com",
     "name": "Ahmed Ali",
     "photo": "https://lh3.googleusercontent.com/...",
-    "dollars": 150,
+    "coins": 500,
+    "dollars": 5,
+    "pointsPerDollar": 100,
+    "dollarsToPointsValue": 500,
     "dailyRewards": 50,
     "isVip": false,
     "banned": false,
@@ -117,12 +119,12 @@ sequenceDiagram
   }
 }
 ```
-* **ملاحظة حول قيمة النقاط والمكافأة (Unified Global Reward):**
-  * قيمة المكافأة `dailyRewards` **موحدة لجميع المستخدمين بدون استثناء** ومحددة مركزياً من لوحة التحكم (Settings).
-  * إذا كانت الإدارة مفعلة عرضاً ترويجياً في لوحة التحكم (مثلاً ساعة حظ بمكافأة 100 نقطة بدل 50):
-    * حقل `dailyRewards` سيرجع تلقائياً بالقيمة المضاعفة (100) لجميع المستخدمين.
-    * حقل `activePromotion` سيرجع ببيانات العرض ليتمكن التطبيق من عرض شارة مميزة ("ساعة الحظ: مكافأتك 100 نقطة!").
-  * في الأوقات العادية، يرجع `activePromotion: null` وتعود `dailyRewards` لقيمتها الموحدة المحددة من الإدارة (افتراضياً 50 نقطة).
+* **توضيح الحقول الجديدة الخاصة بالأرصدة والتحويل:**
+  * `coins`: رصيد النقاط الفعلي للمستخدم في حسابه.
+  * `dollars`: رصيد الدولارات للمستخدم (يمكن تحويله وفكه إلى نقاط في أي وقت).
+  * `pointsPerDollar`: معدل تحويل الدولار إلى نقاط المحدد من الإدارة (مثلاً `100`، أي كل 1$ = 100 نقطة).
+  * `dollarsToPointsValue`: إجمالي النقاط المتوقع الحصول عليها إذا قام المستخدم بفك كامل رصيد دولاراته الحالي (`dollars * pointsPerDollar`).
+  * `dailyRewards`: قيمة نقاط المكافأة اليومية **موحدة لجميع المستخدمين** ومحددة مركزياً من لوحة التحكم، وتتضاعف تلقائياً إذا كان هناك عرض ترويجي نشط (`activePromotion`).
 
 ---
 
@@ -208,6 +210,64 @@ sequenceDiagram
 
 ---
 
+### خامساً: فك وتحويل الدولارات إلى نقاط (Dollars to Points Exchange)
+
+يستطيع المستخدم في أي وقت فك رصيده من الدولارات وتحويلها فورياً إلى نقاط تضاف لمحفظته.
+
+#### 1. استعلام عن سعر صرف الدولار مقابل النقاط:
+* **المسار:** `GET /api/v4/mobile_v2/exchange-rate`
+* **الاستجابة:**
+```json
+{
+  "success": true,
+  "pointsPerDollar": 100,
+  "description": "كل 1 دولار يعادل 100 نقطة"
+}
+```
+
+#### 2. إرسال طلب فك الدولار (Exchange Request):
+* **المسار:** `POST /api/v4/mobile_v2/exchange-dollars`
+* **الرابط الكامل:** `https://dashboard.flycompany.online/api/v4/mobile_v2/exchange-dollars`
+* **المتطلبات (Body):**
+```json
+{
+  "uid": "FIREBASE_UID_HERE",
+  "amount": 5 // اختياري: عدد الدولارات المراد فكها، أو "all" أو حذف الحقل لفك كامل رصيد الدولارات
+}
+```
+
+* **الاستجابة الناجحة (HTTP 200 OK):**
+```json
+{
+  "success": true,
+  "message": "تم فك 5$ بنجاح والحصول على 500 نقطة!",
+  "exchange": {
+    "dollarsExchanged": 5,
+    "pointsAwarded": 500,
+    "pointsPerDollar": 100,
+    "remainingDollars": 0,
+    "totalCoins": 1000
+  }
+}
+```
+
+---
+
+### سادساً: استقبال الإشعارات العامة لجميع المستخدمين (Broadcast Push Notifications)
+
+يقوم الأدمن من لوحة التحكم بإرسال إشعارات عامة لجميع المستخدمين. لضمان استقبال المستخدم لجميع الإشعارات العامة حتى لو لم يكن التطبيق مفتوحاً:
+
+1. **الاشتراك في قناة البث العام (Topic: `all_users`):**
+   عند تشغيل التطبيق بعد تسجيل الدخول، اشترك في القناة العامة عبر Firebase Messaging:
+   ```dart
+   await FirebaseMessaging.instance.subscribeToTopic('all_users');
+   ```
+
+2. **تسجيل الـ FCM Token:**
+   تأكد من إرسال توكن الجهاز في استدعاء `/auth/google-sync` أو `/fcm-token`؛ حيث يقوم السيرفر بإرسال الإشعار أيضاً عبر Direct Multicast لجميع الأجهزة المسجلة.
+
+---
+
 ## 5. استقبال تحديث الرصيد لحظياً عبر السوكيت (Live Balance Updates)
 
 عند اتصالك بالسوكيت:
@@ -287,7 +347,29 @@ class ApiService {
     return jsonDecode(response.body);
   }
 
-  // 3. الاتصال بالسوكيت والاستماع لتحديث الرصيد
+  // 3. فك وتحويل الدولارات إلى نقاط
+  static Future<Map<String, dynamic>> exchangeDollars(String uid, {double? amount}) async {
+    final body = {'uid': uid};
+    if (amount != null) {
+      body['amount'] = amount as dynamic;
+    }
+
+    final response = await http.post(
+      Uri.parse('$baseUrl/exchange-dollars'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(body),
+    );
+
+    return jsonDecode(response.body);
+  }
+
+  // 4. الاشتراك في الإشعارات العامة
+  static Future<void> setupNotifications() async {
+    // الاشتراك في قناة البث لجميع المستخدمين
+    await FirebaseMessaging.instance.subscribeToTopic('all_users');
+  }
+
+  // 5. الاتصال بالسوكيت والاستماع لتحديث الرصيد
   static IO.Socket initSocket(String uid, Function(int newBalance) onBalanceUpdated) {
     IO.Socket socket = IO.io(socketUrl, IO.OptionBuilder()
         .setTransports(['websocket'])
