@@ -225,22 +225,49 @@ exports.SearchJobs = async (req, res) => {
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 10;
         const searchQuery = req.query.q || '';
+        const trimmed = searchQuery.trim();
+        const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const escaped = escapeRegex(trimmed);
+
+        const searchPatterns = new Set();
+        searchPatterns.add(escaped);
+
+        const cleanUrl = trimmed.split('?')[0].split('#')[0].replace(/\/+$/, '');
+        if (cleanUrl) {
+            searchPatterns.add(escapeRegex(cleanUrl));
+        }
+
+        const normalized = cleanUrl.replace(/^(https?:\/\/)?(www\.|m\.|mobile\.|l\.|web\.)?/i, '');
+        if (normalized) {
+            searchPatterns.add(escapeRegex(normalized));
+        }
+
+        if (normalized.includes('/')) {
+            const slug = normalized.substring(normalized.indexOf('/') + 1).replace(/\/+$/, '');
+            if (slug.length >= 3) {
+                searchPatterns.add(escapeRegex(slug));
+            }
+        }
 
         const skipDocs = (page - 1) * limit;
 
         const searchCriteria = {
             $or: [
-                { jobId: { $regex: searchQuery, $options: 'i' } },
-                { platform: { $regex: searchQuery, $options: 'i' } },
-                { status: { $regex: searchQuery, $options: 'i' } },
-                { linkTypeName: { $regex: searchQuery, $options: 'i' } },
-                { uid: { $regex: searchQuery, $options: 'i' } },
-                { country: { $regex: searchQuery, $options: 'i' } },
-                { type: { $regex: searchQuery, $options: 'i' } }
+                { jobId: { $regex: escaped, $options: 'i' } },
+                { platform: { $regex: escaped, $options: 'i' } },
+                { status: { $regex: escaped, $options: 'i' } },
+                { linkTypeName: { $regex: escaped, $options: 'i' } },
+                { uid: { $regex: escaped, $options: 'i' } },
+                { country: { $regex: escaped, $options: 'i' } },
+                { type: { $regex: escaped, $options: 'i' } }
             ]
         };
 
-        if (!isNaN(searchQuery)) {
+        for (const pat of searchPatterns) {
+            searchCriteria.$or.push({ link: { $regex: pat, $options: 'i' } });
+        }
+
+        if (!isNaN(searchQuery) && trimmed !== '') {
             searchCriteria.$or.push(
                 { likeCount: parseInt(searchQuery) },
                 { maxCount: parseInt(searchQuery) }

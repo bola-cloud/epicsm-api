@@ -62,15 +62,45 @@ exports.getJobs = async (req, res) => {
 
         const query = {};
 
-        // Search Query (Regex match against multiple fields)
+        // Search Query (Regex match against multiple fields & robust URL normalization)
         if (searchQuery) {
-            const normalizedQuery = searchQuery.toLowerCase().replace(/^(https?:\/\/)?(www\.|m\.)?/g, "");
-            query.$or = [
-                { targetLink: { $regex: normalizedQuery, $options: 'i' } },
-                { target_id: { $regex: searchQuery, $options: 'i' } },
-                { mediaId: { $regex: searchQuery, $options: 'i' } },
-                { userPk: { $regex: searchQuery, $options: 'i' } }
-            ];
+            const trimmed = searchQuery.trim();
+            const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const searchPatterns = new Set();
+            searchPatterns.add(escapeRegex(trimmed));
+
+            // Strip query parameters and hash (e.g. ?_rdr, ?mibextid=..., #ref)
+            const cleanUrl = trimmed.split('?')[0].split('#')[0].replace(/\/+$/, '');
+            if (cleanUrl) {
+                searchPatterns.add(escapeRegex(cleanUrl));
+            }
+
+            // Strip protocol and common subdomains (www., m., mobile., l., web.)
+            const normalized = cleanUrl.replace(/^(https?:\/\/)?(www\.|m\.|mobile\.|l\.|web\.)?/i, '');
+            if (normalized) {
+                searchPatterns.add(escapeRegex(normalized));
+            }
+
+            // Path/slug part of the URL
+            if (normalized.includes('/')) {
+                const slug = normalized.substring(normalized.indexOf('/') + 1).replace(/\/+$/, '');
+                if (slug.length >= 3) {
+                    searchPatterns.add(escapeRegex(slug));
+                }
+            }
+
+            const orConditions = [];
+            for (const pat of searchPatterns) {
+                orConditions.push({ targetLink: { $regex: pat, $options: 'i' } });
+            }
+            orConditions.push(
+                { target_id: { $regex: escapeRegex(trimmed), $options: 'i' } },
+                { mediaId: { $regex: escapeRegex(trimmed), $options: 'i' } },
+                { userPk: { $regex: escapeRegex(trimmed), $options: 'i' } },
+                { jobId: { $regex: escapeRegex(trimmed), $options: 'i' } }
+            );
+
+            query.$or = orConditions;
         }
 
         // Platform Filter
