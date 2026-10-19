@@ -80,7 +80,18 @@ exports.getJobs = async (req, res) => {
 
         // Status Filter
         if (statusFilter && statusFilter !== 'All') {
-            query.status = { $regex: `^${statusFilter}$`, $options: 'i' };
+            const sf = statusFilter.toLowerCase();
+            if (sf === 'active') {
+                query.status = { $regex: '^active$', $options: 'i' };
+                query.$expr = { $lt: ["$likeCount", "$maxCount"] };
+            } else if (sf === 'completed') {
+                query.$or = [
+                    { status: { $regex: '^completed$', $options: 'i' } },
+                    { $expr: { $gte: ["$likeCount", "$maxCount"] } }
+                ];
+            } else {
+                query.status = { $regex: `^${statusFilter}$`, $options: 'i' };
+            }
         }
 
         // Error Filter

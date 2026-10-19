@@ -315,7 +315,18 @@ exports.FilterJobs = async (req, res) => {
         }
 
         if (req.query.statusFilter) {
-            filterCriteria.status = req.query.statusFilter;
+            const sf = req.query.statusFilter.toLowerCase();
+            if (sf === 'active') {
+                filterCriteria.status = 'Active';
+                filterCriteria.$expr = { $lt: ["$likeCount", "$maxCount"] };
+            } else if (sf === 'completed') {
+                filterCriteria.$or = [
+                    { status: 'Completed' },
+                    { $expr: { $gte: ["$likeCount", "$maxCount"] } }
+                ];
+            } else {
+                filterCriteria.status = req.query.statusFilter;
+            }
         }
 
         if (req.query.jobIdFilter) {
@@ -714,14 +725,14 @@ exports.mIncrementJobLikesCount = async (req, res) => {
 
         // Check if likeCount has reached or exceeded maxCount
         if (updatedJob.likeCount >= updatedJob.maxCount) {
-            // Update isLive to false
+            // Update isLive to false, status to Completed, and set finishDate
             await Job.findOneAndUpdate(
                 { jobId: jobId },
-                { $set: { isLive: false } },
+                { $set: { isLive: false, status: "Completed", finishDate: new Date() } },
                 { runValidators: true }
             );
 
-            // Fetch the updated job to include the isLive change in the response
+            // Fetch the updated job to include the changes in the response
             const finalUpdatedJob = await Job.findOne({ jobId: jobId });
             return res.status(200).json(finalUpdatedJob);
         }

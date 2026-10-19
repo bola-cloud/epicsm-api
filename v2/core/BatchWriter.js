@@ -56,6 +56,16 @@ class BatchWriter {
                     },
                     { $inc: { likeCount: userIds.length } }
                 );
+
+                // 3. Mark completed JobV2
+                await JobV2.updateMany(
+                    {
+                        jobId: jobId,
+                        status: 'Active',
+                        $expr: { $gte: ["$likeCount", "$maxCount"] }
+                    },
+                    { $set: { status: 'Completed', isLive: false } }
+                );
             }
             // console.log(`[V2 BatchWriter] Processed ${currentBuffer.size} jobs successfully.`);
         } catch (error) {
