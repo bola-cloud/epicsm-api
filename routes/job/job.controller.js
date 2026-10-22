@@ -1,4 +1,6 @@
+const mongoose = require('mongoose');
 const Job = require('../../models/job');
+const JobV2 = require('../../v2/models/JobV2');
 const Ping = require('../../models/ping');
 const Blocked = require('../../models/blocked');
 const authController = require('../authentication/authentication.controller')
@@ -9,6 +11,35 @@ try {
     db = admin.firestore();
 } catch (e) {
     console.error("Firebase not initialized in job.controller");
+}
+
+function formatV2Job(j) {
+    if (!j) return null;
+    const isCompleted = (typeof j.maxCount === 'number' && typeof j.likeCount === 'number' && j.maxCount > 0 && j.likeCount >= j.maxCount) ||
+        j.status === 'Completed' || j.status === 'completed';
+    return {
+        _id: j._id,
+        jobId: j.jobId,
+        link: j.targetLink,
+        targetLink: j.targetLink,
+        platform: j.platform ? j.platform.charAt(0).toUpperCase() + j.platform.slice(1).toLowerCase() : 'Facebook',
+        type: j.type || 'post',
+        linkTypeName: j.linkTypeName || (j.actionType ? j.actionType.charAt(0).toUpperCase() + j.actionType.slice(1).toLowerCase() : 'Like'),
+        actionType: j.actionType,
+        maxCount: j.maxCount,
+        likeCount: j.likeCount || 0,
+        isVip: j.isVip || false,
+        status: isCompleted ? 'Completed' : ((j.status === 'active' || j.status === 'Active') ? 'Active' : (j.status || 'Off')),
+        isLive: (j.status === 'active' || j.status === 'Active') && !isCompleted,
+        createdAt: j.createdAt,
+        datePublished: j.createdAt || new Date(),
+        uid: j.creatorId || j.uid || '----admin----',
+        creatorId: j.creatorId || j.uid || '----admin----',
+        comments: j.comments || [],
+        country: j.country || 'all',
+        version: 'V2',
+        isV2: true
+    };
 }
 
 
@@ -48,14 +79,28 @@ exports.GetJobs = async (req, res) => {
         const limit = parseInt(req.query.limit) || 10;
         const skip = (page - 1) * limit;
 
-        const totalCount = await Job.countDocuments();
+        const [v2Count, v1Count] = await Promise.all([
+            JobV2.countDocuments(),
+            Job.countDocuments()
+        ]);
+        const totalCount = v2Count + v1Count;
 
-        const jobs = await Job.find()
-            .sort({ createdAt: -1 })
-            .skip(skip)
-            .limit(limit);
+        let jobs = [];
+        if (skip < v2Count) {
+            const v2Limit = Math.min(limit, v2Count - skip);
+            const rawV2 = await JobV2.find().sort({ createdAt: -1 }).skip(skip).limit(v2Limit).lean();
+            jobs.push(...rawV2.map(formatV2Job));
 
-        if (!jobs) return res.status(404).json({ message: 'No Job found' });
+            if (jobs.length < limit) {
+                const remaining = limit - jobs.length;
+                const rawV1 = await Job.find().sort({ createdAt: -1 }).limit(remaining).lean();
+                jobs.push(...rawV1.map(j => ({ ...j, version: 'V1', isV2: false })));
+            }
+        } else {
+            const v1Skip = skip - v2Count;
+            const rawV1 = await Job.find().sort({ createdAt: -1 }).skip(v1Skip).limit(limit).lean();
+            jobs.push(...rawV1.map(j => ({ ...j, version: 'V1', isV2: false })));
+        }
 
         res.status(200).json({
             jobs,
@@ -79,9 +124,23 @@ exports.GetLatestJobs = async (req, res) => {
             return res.status(401).json({ message: 'Unauthorized' });
         }
 
-        const jobs = await Job.find().sort({ createdAt: -1 }).limit(5);
-        if (!jobs) return res.status(404).json({ message: 'No Job found' });
-        res.status(200).json(jobs);
+        const [v2Jobs, v1Jobs] = await Promise.all([
+            JobV2.find().sort({ createdAt: -1 }).limit(10).lean(),
+            Job.find().sort({ createdAt: -1 }).limit(10).lean()
+        ]);
+
+        const mappedV2 = v2Jobs.map(formatV2Job);
+        const mappedV1 = v1Jobs.map(j => ({
+            ...j,
+            version: 'V1',
+            isV2: false
+        }));
+
+        const combined = [...mappedV2, ...mappedV1]
+            .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+            .slice(0, 10);
+
+        res.status(200).json(combined);
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -90,9 +149,16 @@ exports.GetLatestJobs = async (req, res) => {
 exports.GetJobsByPlatform = async (req, res) => {
     try {
         const { platform } = req.params;
-        const jobs = await Job.find({ platform }).sort({ createdAt: -1 });
-        if (!jobs) return res.status(404).json({ message: 'No Job found' });
-        res.status(200).json(jobs);
+        const platRegex = new RegExp(`^${platform}$`, 'i');
+        const [v2Jobs, v1Jobs] = await Promise.all([
+            JobV2.find({ platform: platRegex }).sort({ createdAt: -1 }).lean(),
+            Job.find({ platform: platRegex }).sort({ createdAt: -1 }).lean()
+        ]);
+
+        const combined = [...v2Jobs.map(formatV2Job), ...v1Jobs.map(j => ({ ...j, version: 'V1', isV2: false }))]
+            .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+
+        res.status(200).json(combined);
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -106,13 +172,21 @@ exports.GetJobsLengthByPlatform = async (req, res) => {
             return res.status(401).json({ message: 'Unauthorized' });
         }
 
-        const facebookJobsLength = await Job.countDocuments({ platform: 'Facebook' });
-        const instagramJobsLength = await Job.countDocuments({ platform: 'Instagram' });
+        const [fbV1, fbV2, igV1, igV2] = await Promise.all([
+            Job.countDocuments({ platform: { $regex: /^facebook$/i } }),
+            JobV2.countDocuments({ platform: { $regex: /^facebook$/i } }),
+            Job.countDocuments({ platform: { $regex: /^instagram$/i } }),
+            JobV2.countDocuments({ platform: { $regex: /^instagram$/i } })
+        ]);
 
+        const facebookJobsLength = fbV1 + fbV2;
+        const instagramJobsLength = igV1 + igV2;
 
         res.status(200).json({
             facebook: facebookJobsLength,
-            instagram: instagramJobsLength
+            instagram: instagramJobsLength,
+            v1: { facebook: fbV1, instagram: igV1 },
+            v2: { facebook: fbV2, instagram: igV2 }
         });
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -140,7 +214,23 @@ exports.GetOnlineUsersLength = async (req, res) => {
 
 exports.GetJobById = async (req, res) => {
     try {
-        const job = await Job.findById(req.params.id);
+        const id = req.params.id;
+        let job = null;
+        if (mongoose.Types.ObjectId.isValid(id)) {
+            job = await Job.findById(id).lean();
+            if (!job) {
+                const j2 = await JobV2.findById(id).lean();
+                if (j2) job = formatV2Job(j2);
+            }
+        }
+        if (!job) {
+            const j2 = await JobV2.findOne({ jobId: id }).lean();
+            if (j2) job = formatV2Job(j2);
+        }
+        if (!job) {
+            job = await Job.findOne({ jobId: id }).lean();
+        }
+
         if (!job) return res.status(404).json({ message: 'Job not found' });
         res.status(200).json(job);
     } catch (error) {
@@ -158,18 +248,40 @@ exports.UpdateJob = async (req, res) => {
 
         const { isLive } = req.body;
         const newStatus = isLive ? "Active" : "Off";
+        const id = req.params.id;
 
-        const updatedJob = await Job.findByIdAndUpdate(
-            req.params.id,
-            { ...req.body, status: newStatus },
-            { new: true, runValidators: true }
-        );
+        let updatedJob = null;
+        if (mongoose.Types.ObjectId.isValid(id)) {
+            updatedJob = await Job.findByIdAndUpdate(
+                id,
+                { ...req.body, status: newStatus },
+                { new: true, runValidators: true }
+            );
+            if (!updatedJob) {
+                const v2Status = isLive ? "active" : "paused";
+                const j2 = await JobV2.findByIdAndUpdate(
+                    id,
+                    { ...req.body, status: v2Status },
+                    { new: true }
+                );
+                if (j2) updatedJob = formatV2Job(j2);
+            }
+        }
+        if (!updatedJob) {
+            const v2Status = isLive ? "active" : "paused";
+            const j2 = await JobV2.findOneAndUpdate(
+                { jobId: id },
+                { ...req.body, status: v2Status },
+                { new: true }
+            );
+            if (j2) updatedJob = formatV2Job(j2);
+        }
 
         if (!updatedJob) {
             return res.status(404).json({ message: 'Job not found' });
         }
 
-        res.status(201).json(updatedJob);
+        res.status(200).json(updatedJob);
     } catch (error) {
         res.status(400).json({ message: error.message });
     }
@@ -183,8 +295,22 @@ exports.DeleteJob = async (req, res) => {
             return res.status(401).json({ message: 'Unauthorized' });
         }
 
-        const deletedJob = await Job.findByIdAndDelete(req.params.id);
-        if (!deletedJob) return res.status(404).json({ message: 'Job not found' });
+        const id = req.params.id;
+        let deleted = null;
+        if (mongoose.Types.ObjectId.isValid(id)) {
+            deleted = await Job.findByIdAndDelete(id);
+            if (!deleted) {
+                deleted = await JobV2.findByIdAndDelete(id);
+            }
+        }
+        if (!deleted) {
+            deleted = await JobV2.findOneAndDelete({ jobId: id });
+        }
+        if (!deleted) {
+            deleted = await Job.findOneAndDelete({ jobId: id });
+        }
+
+        if (!deleted) return res.status(404).json({ message: 'Job not found' });
         res.json({ message: 'Job deleted successfully' });
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -205,15 +331,21 @@ exports.BulkDeleteJobs = async (req, res) => {
             return res.status(400).json({ message: 'No job IDs provided' });
         }
 
-        const deleteResults = await Job.deleteMany({ _id: { $in: jobIds } });
+        const validObjectIds = jobIds.filter(id => mongoose.Types.ObjectId.isValid(id));
+        const [deleteV1, deleteV2] = await Promise.all([
+            Job.deleteMany({ _id: { $in: jobIds } }),
+            JobV2.deleteMany({ $or: [{ _id: { $in: validObjectIds } }, { jobId: { $in: jobIds } }] })
+        ]);
 
-        if (deleteResults.deletedCount === 0) {
+        const totalDeleted = (deleteV1.deletedCount || 0) + (deleteV2.deletedCount || 0);
+
+        if (totalDeleted === 0) {
             return res.status(404).json({ message: 'No jobs found to delete' });
         }
 
         res.json({
             message: 'Jobs deleted successfully',
-            deletedCount: deleteResults.deletedCount
+            deletedCount: totalDeleted
         });
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -251,7 +383,7 @@ exports.SearchJobs = async (req, res) => {
 
         const skipDocs = (page - 1) * limit;
 
-        const searchCriteria = {
+        const searchCriteriaV1 = {
             $or: [
                 { jobId: { $regex: escaped, $options: 'i' } },
                 { platform: { $regex: escaped, $options: 'i' } },
@@ -263,15 +395,27 @@ exports.SearchJobs = async (req, res) => {
             ]
         };
 
+        const searchCriteriaV2 = {
+            $or: [
+                { jobId: { $regex: escaped, $options: 'i' } },
+                { platform: { $regex: escaped, $options: 'i' } },
+                { status: { $regex: escaped, $options: 'i' } },
+                { linkTypeName: { $regex: escaped, $options: 'i' } },
+                { actionType: { $regex: escaped, $options: 'i' } },
+                { creatorId: { $regex: escaped, $options: 'i' } },
+                { type: { $regex: escaped, $options: 'i' } }
+            ]
+        };
+
         for (const pat of searchPatterns) {
-            searchCriteria.$or.push({ link: { $regex: pat, $options: 'i' } });
+            searchCriteriaV1.$or.push({ link: { $regex: pat, $options: 'i' } });
+            searchCriteriaV2.$or.push({ targetLink: { $regex: pat, $options: 'i' } });
         }
 
         if (!isNaN(searchQuery) && trimmed !== '') {
-            searchCriteria.$or.push(
-                { likeCount: parseInt(searchQuery) },
-                { maxCount: parseInt(searchQuery) }
-            );
+            const numVal = parseInt(searchQuery);
+            searchCriteriaV1.$or.push({ likeCount: numVal }, { maxCount: numVal });
+            searchCriteriaV2.$or.push({ likeCount: numVal }, { maxCount: numVal });
         }
 
         const dateQuery = new Date(searchQuery);
@@ -279,28 +423,28 @@ exports.SearchJobs = async (req, res) => {
             const startOfDay = new Date(dateQuery.setHours(0, 0, 0, 0));
             const endOfDay = new Date(dateQuery.setHours(23, 59, 59, 999));
 
-            searchCriteria.$or.push(
-                {
-                    datePublished: {
-                        $gte: startOfDay,
-                        $lte: endOfDay
-                    }
-                },
-                {
-                    createdAt: {
-                        $gte: startOfDay,
-                        $lte: endOfDay
-                    }
-                }
-            );
+            const dateCond = {
+                $or: [
+                    { datePublished: { $gte: startOfDay, $lte: endOfDay } },
+                    { createdAt: { $gte: startOfDay, $lte: endOfDay } }
+                ]
+            };
+            searchCriteriaV1.$or.push(...dateCond.$or);
+            searchCriteriaV2.$or.push({ createdAt: { $gte: startOfDay, $lte: endOfDay } });
         }
 
-        const jobs = await Job.find(searchCriteria)
-            .sort({ createdAt: -1 })
-            .skip(skipDocs)
-            .limit(limit);
+        const [v2Matches, v1Matches, countV2, countV1] = await Promise.all([
+            JobV2.find(searchCriteriaV2).sort({ createdAt: -1 }).limit(limit * page).lean(),
+            Job.find(searchCriteriaV1).sort({ createdAt: -1 }).limit(limit * page).lean(),
+            JobV2.countDocuments(searchCriteriaV2),
+            Job.countDocuments(searchCriteriaV1)
+        ]);
 
-        const total = await Job.countDocuments(searchCriteria);
+        const total = countV2 + countV1;
+        const mappedV2 = v2Matches.map(formatV2Job);
+        const mappedV1 = v1Matches.map(j => ({ ...j, version: 'V1', isV2: false }));
+        const allMatched = [...mappedV2, ...mappedV1].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+        const paginated = allMatched.slice(skipDocs, skipDocs + limit);
 
         const totalPages = Math.ceil(total / limit);
         const hasNextPage = page < totalPages;
@@ -308,7 +452,7 @@ exports.SearchJobs = async (req, res) => {
 
         return res.status(200).json({
             success: true,
-            jobs,
+            jobs: paginated,
             pagination: {
                 total,
                 page,
@@ -335,82 +479,102 @@ exports.FilterJobs = async (req, res) => {
         const limit = parseInt(req.query.limit) || 10;
         const skipDocs = (page - 1) * limit;
 
-        const filterCriteria = {};
+        const filterCriteriaV1 = {};
+        const filterCriteriaV2 = {};
 
         if (req.query.platformFilter) {
-            filterCriteria.platform = { $regex: req.query.platformFilter, $options: 'i' };
+            filterCriteriaV1.platform = { $regex: req.query.platformFilter, $options: 'i' };
+            filterCriteriaV2.platform = { $regex: req.query.platformFilter, $options: 'i' };
         }
 
         if (req.query.statusFilter) {
             const sf = req.query.statusFilter.toLowerCase();
             if (sf === 'active') {
-                filterCriteria.status = 'Active';
-                filterCriteria.$expr = { $lt: ["$likeCount", "$maxCount"] };
+                filterCriteriaV1.status = 'Active';
+                filterCriteriaV1.$expr = { $lt: ["$likeCount", "$maxCount"] };
+                filterCriteriaV2.status = { $regex: /^active$/i };
+                filterCriteriaV2.$expr = { $lt: ["$likeCount", "$maxCount"] };
             } else if (sf === 'completed') {
-                filterCriteria.$or = [
+                filterCriteriaV1.$or = [
                     { status: 'Completed' },
                     { $expr: { $gte: ["$likeCount", "$maxCount"] } }
                 ];
+                filterCriteriaV2.$or = [
+                    { status: { $regex: /^completed$/i } },
+                    { $expr: { $gte: ["$likeCount", "$maxCount"] } }
+                ];
             } else {
-                filterCriteria.status = req.query.statusFilter;
+                filterCriteriaV1.status = req.query.statusFilter;
+                filterCriteriaV2.status = { $regex: new RegExp(`^${req.query.statusFilter}$`, 'i') };
             }
         }
 
         if (req.query.jobIdFilter) {
-            filterCriteria.jobId = { $regex: req.query.jobIdFilter, $options: 'i' };
+            filterCriteriaV1.jobId = { $regex: req.query.jobIdFilter, $options: 'i' };
+            filterCriteriaV2.jobId = { $regex: req.query.jobIdFilter, $options: 'i' };
         }
 
         if (req.query.linkTypeNameFilter) {
-            filterCriteria.linkTypeName = { $regex: req.query.linkTypeNameFilter, $options: 'i' };
-        }
-
-        if (req.query.uidFilter) {
-            filterCriteria.uid = { $regex: req.query.uidFilter, $options: 'i' };
-        }
-
-        if (req.query.minLikes) {
-            filterCriteria.likeCount = { $gte: parseInt(req.query.minLikes) };
-        }
-
-        if (req.query.minMaxCount) {
-            filterCriteria.maxCount = { $gte: parseInt(req.query.minMaxCount) };
-        }
-
-        if (req.query.startDate || req.query.endDate) {
-            filterCriteria.datePublished = {};
-
-            if (req.query.startDate) {
-                const startDate = new Date(req.query.startDate);
-                startDate.setHours(0, 0, 0, 0);
-                filterCriteria.datePublished.$gte = startDate;
-            }
-
-            if (req.query.endDate) {
-                const endDate = new Date(req.query.endDate);
-                endDate.setHours(23, 59, 59, 999);
-                filterCriteria.datePublished.$lte = endDate;
-            }
-        }
-
-        if (req.query.liveFilter && req.query.liveFilter !== 'all') {
-            filterCriteria.isLive = req.query.liveFilter === 'true';
-        }
-
-        if (req.query.isVipFilter === 'true') {
-            filterCriteria.isVip = true;
-        } else if (req.query.isVipFilter === 'false') {
-            filterCriteria.$or = [
-                { isVip: false },
-                { isVip: { $exists: false } }
+            filterCriteriaV1.linkTypeName = { $regex: req.query.linkTypeNameFilter, $options: 'i' };
+            filterCriteriaV2.$or = [
+                { linkTypeName: { $regex: req.query.linkTypeNameFilter, $options: 'i' } },
+                { actionType: { $regex: req.query.linkTypeNameFilter, $options: 'i' } }
             ];
         }
 
-        const jobs = await Job.find(filterCriteria)
-            .sort({ createdAt: -1 })
-            .skip(skipDocs)
-            .limit(limit);
+        if (req.query.uidFilter) {
+            filterCriteriaV1.uid = { $regex: req.query.uidFilter, $options: 'i' };
+            filterCriteriaV2.creatorId = { $regex: req.query.uidFilter, $options: 'i' };
+        }
 
-        const total = await Job.countDocuments(filterCriteria);
+        if (req.query.minLikes) {
+            const minL = parseInt(req.query.minLikes);
+            filterCriteriaV1.likeCount = { $gte: minL };
+            filterCriteriaV2.likeCount = { $gte: minL };
+        }
+
+        if (req.query.minMaxCount) {
+            const minM = parseInt(req.query.minMaxCount);
+            filterCriteriaV1.maxCount = { $gte: minM };
+            filterCriteriaV2.maxCount = { $gte: minM };
+        }
+
+        if (req.query.startDate || req.query.endDate) {
+            const dateObj = {};
+            if (req.query.startDate) {
+                const startDate = new Date(req.query.startDate);
+                startDate.setHours(0, 0, 0, 0);
+                dateObj.$gte = startDate;
+            }
+            if (req.query.endDate) {
+                const endDate = new Date(req.query.endDate);
+                endDate.setHours(23, 59, 59, 999);
+                dateObj.$lte = endDate;
+            }
+            filterCriteriaV1.datePublished = dateObj;
+            filterCriteriaV2.createdAt = dateObj;
+        }
+
+        if (req.query.isVipFilter === 'true') {
+            filterCriteriaV1.isVip = true;
+            filterCriteriaV2.isVip = true;
+        } else if (req.query.isVipFilter === 'false') {
+            filterCriteriaV1.$or = [{ isVip: false }, { isVip: { $exists: false } }];
+            filterCriteriaV2.$or = [{ isVip: false }, { isVip: { $exists: false } }];
+        }
+
+        const [v2Filtered, v1Filtered, countV2, countV1] = await Promise.all([
+            JobV2.find(filterCriteriaV2).sort({ createdAt: -1 }).limit(limit * page).lean(),
+            Job.find(filterCriteriaV1).sort({ createdAt: -1 }).limit(limit * page).lean(),
+            JobV2.countDocuments(filterCriteriaV2),
+            Job.countDocuments(filterCriteriaV1)
+        ]);
+
+        const total = countV2 + countV1;
+        const mappedV2 = v2Filtered.map(formatV2Job);
+        const mappedV1 = v1Filtered.map(j => ({ ...j, version: 'V1', isV2: false }));
+        const allMatched = [...mappedV2, ...mappedV1].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+        const paginated = allMatched.slice(skipDocs, skipDocs + limit);
 
         const totalPages = Math.ceil(total / limit);
         const hasNextPage = page < totalPages;
@@ -418,7 +582,7 @@ exports.FilterJobs = async (req, res) => {
 
         return res.status(200).json({
             success: true,
-            jobs,
+            jobs: paginated,
             pagination: {
                 total,
                 page,
@@ -428,16 +592,16 @@ exports.FilterJobs = async (req, res) => {
                 limit
             }
         });
-
     } catch (error) {
         console.error('Filter error:', error);
         return res.status(500).json({
             success: false,
-            message: 'Server error during filtering',
+            message: 'Server error during filter',
             error: error.message
         });
     }
 };
+
 
 exports.GetAllJobIds = async (req, res) => {
     try {
