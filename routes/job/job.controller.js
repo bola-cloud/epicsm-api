@@ -597,6 +597,16 @@ exports.GetSearchJobIds = async (req, res) => {
 // Mobile API
 exports.mCreateJob = async (req, res) => {
     try {
+        const MobileV2Controller = require('../../v2/controllers/mobile.controller');
+        return await MobileV2Controller.mCreateJobV2(req, res);
+    } catch (error) {
+        console.error('Error creating job via legacy route forwarding:', error);
+        return res.status(500).json({ message: error.message });
+    }
+};
+
+exports.mCreateJob_legacy = async (req, res) => {
+    try {
         const { uid } = req.body;
 
         if (!uid) {
@@ -645,24 +655,50 @@ exports.mCreateJob = async (req, res) => {
 
 exports.mGetMyJobs = async (req, res) => {
     try {
-        const jobs = await Job.find({ uid: req.params.id, status: { $ne: 'Deleted' } }).sort({ createdAt: -1 });
-        if (!jobs) return res.status(404).json({ message: 'No Job found' });
-        res.status(200).json(jobs);
+        const JobV2 = require('../../v2/models/JobV2');
+        const [v1Jobs, v2Jobs] = await Promise.all([
+            Job.find({ uid: req.params.id, status: { $ne: 'Deleted' } }).sort({ createdAt: -1 }).lean(),
+            JobV2.find({ creatorId: req.params.id, status: { $nin: ['Cancelled', 'Deleted'] } }).sort({ createdAt: -1 }).lean()
+        ]);
+
+        const mappedV2 = (v2Jobs || []).map(j => ({
+            ...j,
+            uid: j.creatorId,
+            link: j.targetLink,
+            datePublished: j.createdAt,
+            isLive: j.status === 'Active'
+        }));
+
+        const combined = [...mappedV2, ...(v1Jobs || [])].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        res.status(200).json(combined);
     } catch (error) {
+        console.error('Error fetching my jobs:', error);
         res.status(500).json({ message: error.message });
     }
 };
 
 exports.mDeleteJob = async (req, res) => {
     try {
-        const deletedJob = await Job.findOneAndUpdate(
-            { jobId: req.params.jobId },
-            { ...req.body, status: "Deleted", isLive: false },
-            { new: true, runValidators: true }
-        );
-        if (!deletedJob) return res.status(404).json({ message: 'Job not found' });
+        const JobV2 = require('../../v2/models/JobV2');
+        const [deletedV1, deletedV2] = await Promise.all([
+            Job.findOneAndUpdate(
+                { jobId: req.params.jobId },
+                { ...req.body, status: "Deleted", isLive: false },
+                { new: true }
+            ),
+            JobV2.findOneAndUpdate(
+                { jobId: req.params.jobId },
+                { status: "Cancelled" },
+                { new: true }
+            )
+        ]);
+
+        if (!deletedV1 && !deletedV2) {
+            return res.status(404).json({ message: 'Job not found' });
+        }
         res.status(200).json({ message: 'Job deleted successfully' });
     } catch (error) {
+        console.error('Error deleting job:', error);
         res.status(500).json({ message: error.message });
     }
 };

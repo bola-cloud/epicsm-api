@@ -439,7 +439,7 @@ exports.UnbanUser = async (req, res) => {
     }
 };
 
-// Add Balance
+// Add / Update Balance (Points or Dollars)
 exports.AddBalanceToUser = async (req, res) => {
     try {
         const isUser = await authController.getUserByToken(req, res);
@@ -448,34 +448,63 @@ exports.AddBalanceToUser = async (req, res) => {
         }
 
         const userId = req.params.id;
-        const { Balance } = req.body;
-        const numBalance = Number(Balance);
+        const { Balance, amount, type = 'dollars', operation = 'add' } = req.body;
+        const rawAmount = (Balance !== undefined && Balance !== null) ? Balance : amount;
+        const numAmount = Number(rawAmount);
 
-        if (isNaN(numBalance)) {
-            return res.status(400).json({ message: 'Valid balance is required' });
+        if (isNaN(numAmount)) {
+            return res.status(400).json({ message: 'Valid amount is required' });
         }
 
         const query = userId.match(/^[0-9a-fA-F]{24}$/) ? { $or: [{ _id: userId }, { uid: userId }] } : { uid: userId };
-        const updatedUser = await User.findOneAndUpdate(
-            query,
-            { $inc: { dollars: numBalance, coins: numBalance } },
-            { new: true }
-        );
+        
+        const targetField = (type === 'coins' || type === 'points') ? 'coins' : 'dollars';
+        let update = {};
 
-        try {
-            if (db) {
-                const userRef = db.collection('users').doc(userId);
-                const doc = await userRef.get();
-                if (doc.exists) {
-                    await userRef.update({ dollars: (doc.data().dollars || 0) + numBalance });
-                }
-            }
-        } catch (fErr) {
-            console.warn('Firestore add balance warning:', fErr.message);
+        if (operation === 'set') {
+            update = { $set: { [targetField]: Math.max(0, numAmount) } };
+        } else if (operation === 'deduct') {
+            update = { $inc: { [targetField]: -Math.abs(numAmount) } };
+        } else {
+            // Default: 'add'
+            update = { $inc: { [targetField]: Math.abs(numAmount) } };
         }
 
-        const newDollars = updatedUser ? updatedUser.dollars : numBalance;
-        res.status(200).json({ message: `User ${userId}'s balance updated to ${newDollars} dollars.` });
+        // If coins are being added and new balance > 0, reset reward timer
+        if (targetField === 'coins') {
+            update.$set = update.$set || {};
+            update.$set.rewardEligibleAt = null;
+            update.$set.zeroBalanceAt = null;
+        }
+
+        const updatedUser = await User.findOneAndUpdate(query, update, { new: true });
+        if (!updatedUser) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        // Optional legacy sync to firestore if dollars were modified
+        if (targetField === 'dollars' && db) {
+            try {
+                const userRef = db.collection('users').doc(userId);
+                await userRef.update({ dollars: updatedUser.dollars });
+            } catch (fErr) {
+                // Ignore firestore errors
+            }
+        }
+
+        const currencyName = targetField === 'coins' ? 'نقطة (Coins)' : 'دولار ($)';
+        const currentVal = updatedUser[targetField];
+
+        return res.status(200).json({
+            success: true,
+            message: `تم تحديث رصيد الـ ${currencyName} للمستخدم بنجاح. الرصيد الحالي: ${currentVal}`,
+            user: {
+                id: updatedUser._id,
+                uid: updatedUser.uid,
+                dollars: updatedUser.dollars,
+                coins: updatedUser.coins
+            }
+        });
     } catch (error) {
         console.error('Error adding balance:', error);
         res.status(500).json({ message: 'Internal Server Error' });

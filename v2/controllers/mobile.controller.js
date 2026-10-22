@@ -154,6 +154,53 @@ exports.mCreateJobV2 = async (req, res) => {
         // Use the exposed function to create and push to queue
         const savedJob = await createNewJobV2(jobData);
 
+        // Deduct points and trigger zero-balance countdown if balance reaches 0
+        if (uid && uid !== 'TEST_E2E') {
+            try {
+                const User = require('../../models/user');
+                
+                // Determine deduction amount
+                let jobCost = 0;
+                if (req.body.cost !== undefined) jobCost = Number(req.body.cost);
+                else if (req.body.points !== undefined) jobCost = Number(req.body.points);
+                else if (req.body.coins !== undefined) jobCost = Number(req.body.coins);
+                else if (jobData.maxCount !== undefined) jobCost = Number(jobData.maxCount);
+
+                let user = await User.findOne({ uid });
+                if (user) {
+                    let newCoins = user.coins || 0;
+                    if (req.body.remainingCoins !== undefined) {
+                        newCoins = Math.max(0, Number(req.body.remainingCoins));
+                    } else if (jobCost > 0) {
+                        newCoins = Math.max(0, (user.coins || 0) - jobCost);
+                    }
+
+                    const updateFields = { coins: newCoins };
+
+                    // If points reached 0, trigger countdown timer
+                    if (newCoins <= 0) {
+                        const Settings = require('../../models/settings');
+                        const globalSettings = await Settings.findOne();
+                        const delayMinutes = globalSettings?.rewardDelayMinutes || parseInt(process.env.REWARD_DELAY_MINUTES, 10) || 30;
+                        const eligibleAt = new Date(Date.now() + delayMinutes * 60 * 1000);
+
+                        updateFields.coins = 0;
+                        updateFields.zeroBalanceAt = new Date();
+                        updateFields.rewardEligibleAt = eligibleAt;
+                        console.log(`[V2 Mobile API] User ${uid} balance reached 0 on job create. Started ${delayMinutes}-min reward countdown until ${eligibleAt.toISOString()}`);
+                    } else {
+                        // User still has points, ensure reward countdown is reset
+                        updateFields.rewardEligibleAt = null;
+                        updateFields.zeroBalanceAt = null;
+                    }
+
+                    await User.updateOne({ uid }, { $set: updateFields });
+                }
+            } catch (balanceErr) {
+                console.error('[V2 Mobile API] Error updating user balance on job create:', balanceErr.message);
+            }
+        }
+
         res.status(201).json(savedJob);
     } catch (error) {
         console.error('[V2 Mobile API] Error creating job:', error);

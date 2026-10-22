@@ -94,6 +94,14 @@ const userSchema = mongoose.Schema({
         type: Date,
         default: null,
     },
+    zeroBalanceAt: {
+        type: Date,
+        default: null,
+    },
+    rewardEligibleAt: {
+        type: Date,
+        default: null,
+    },
     migratedToV2: {
         type: Boolean,
         default: false,

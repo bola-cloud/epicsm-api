@@ -25,38 +25,8 @@ exports.mGetProfile = async (req, res) => {
             return res.status(404).json({ success: false, message: 'User not found' });
         }
 
-        // 2. Check for active pending reward
-        const activePending = await PendingReward.findOne({
-            uid: user.uid,
-            status: { $in: ['pending', 'processing'] }
-        });
-
-        let pendingRewardData = null;
-        if (activePending) {
-            const waitSeconds = Math.max(0, Math.ceil((new Date(activePending.executeAt).getTime() - Date.now()) / 1000));
-            pendingRewardData = {
-                id: activePending._id,
-                amount: activePending.amount,
-                waitSeconds,
-                executeAt: activePending.executeAt
-            };
-        }
-
-        // 3. Check Cooldown (24 hours)
-        let canClaimReward = true;
-        let cooldownSeconds = 0;
-
-        if (activePending) {
-            canClaimReward = false;
-        } else if (user.lastClaimedRewardAt) {
-            const cooldownHours = 24;
-            const cooldownMs = cooldownHours * 60 * 60 * 1000;
-            const elapsed = Date.now() - new Date(user.lastClaimedRewardAt).getTime();
-            if (elapsed < cooldownMs) {
-                canClaimReward = false;
-                cooldownSeconds = Math.ceil((cooldownMs - elapsed) / 1000);
-            }
-        }
+        // 2. Compute dynamic reward status based on zero-balance and countdown timer
+        const rewardInfo = await RewardService.getRewardStatus(user);
 
         // Check Global Settings and Promotion for uniform reward points
         const Settings = require('../../models/settings');
@@ -86,9 +56,20 @@ exports.mGetProfile = async (req, res) => {
                 dailyRewards: effectiveDailyReward,
                 isVip: Boolean(user.isVip),
                 banned: Boolean(user.banned),
-                canClaimReward,
-                cooldownSeconds,
-                pendingReward: pendingRewardData,
+
+                // Unified and clean reward object for mobile
+                reward: {
+                    status: rewardInfo.status, // 'has_points' | 'waiting_timer' | 'ready_to_claim'
+                    canClaim: rewardInfo.canClaim,
+                    rewardAmount: rewardInfo.rewardAmount,
+                    waitSeconds: rewardInfo.waitSeconds,
+                    eligibleAt: rewardInfo.eligibleAt,
+                    message: rewardInfo.message
+                },
+
+                // Backwards compatibility fields
+                canClaimReward: rewardInfo.canClaim,
+                cooldownSeconds: rewardInfo.waitSeconds,
                 activePromotion: activePromo ? { active: true, amount: activePromo.rewardValue } : null
             }
         });
@@ -104,7 +85,7 @@ exports.mGetProfile = async (req, res) => {
 
 /**
  * Mobile V2 Claim Daily Reward Endpoint
- * Non-blocking instant response with delayed processing
+ * Instant on-demand reward claim when user has 0 points and countdown has elapsed
  */
 exports.mClaimDailyReward = async (req, res) => {
     try {
@@ -114,10 +95,20 @@ exports.mClaimDailyReward = async (req, res) => {
             return res.status(400).json({ success: false, message: 'User ID (uid) is required' });
         }
 
-        const result = await RewardService.claimDailyReward(uid);
+        const { getIO } = require('../index');
+        const io = getIO ? getIO() : null;
+
+        const result = await RewardService.claimDailyReward(uid, io);
 
         if (!result.success) {
-            return res.status(result.onCooldown ? 200 : 400).json(result);
+            if (result.status === 'not_found') {
+                return res.status(404).json(result);
+            }
+            if (result.status === 'banned') {
+                return res.status(403).json(result);
+            }
+            // For status 'has_points' or 'waiting_timer', return 200 with success: false
+            return res.status(200).json(result);
         }
 
         return res.status(200).json(result);
@@ -145,38 +136,8 @@ exports.mGoogleAuthSync = async (req, res) => {
 
         const user = await UserSyncService.syncOrRegisterUser({ uid, email, name, photo, fcm });
 
-        // Check for active pending reward
-        const activePending = await PendingReward.findOne({
-            uid: user.uid,
-            status: { $in: ['pending', 'processing'] }
-        });
-
-        let pendingRewardData = null;
-        if (activePending) {
-            const waitSeconds = Math.max(0, Math.ceil((new Date(activePending.executeAt).getTime() - Date.now()) / 1000));
-            pendingRewardData = {
-                id: activePending._id,
-                amount: activePending.amount,
-                waitSeconds,
-                executeAt: activePending.executeAt
-            };
-        }
-
-        // Check Cooldown (24 hours)
-        let canClaimReward = true;
-        let cooldownSeconds = 0;
-
-        if (activePending) {
-            canClaimReward = false;
-        } else if (user.lastClaimedRewardAt) {
-            const cooldownHours = 24;
-            const cooldownMs = cooldownHours * 60 * 60 * 1000;
-            const elapsed = Date.now() - new Date(user.lastClaimedRewardAt).getTime();
-            if (elapsed < cooldownMs) {
-                canClaimReward = false;
-                cooldownSeconds = Math.ceil((cooldownMs - elapsed) / 1000);
-            }
-        }
+        // Compute dynamic reward status based on zero-balance and countdown timer
+        const rewardInfo = await RewardService.getRewardStatus(user);
 
         // Check Global Settings and Promotion for uniform reward points
         const Settings = require('../../models/settings');
@@ -207,9 +168,20 @@ exports.mGoogleAuthSync = async (req, res) => {
                 dailyRewards: effectiveDailyReward,
                 isVip: Boolean(user.isVip),
                 banned: Boolean(user.banned),
-                canClaimReward,
-                cooldownSeconds,
-                pendingReward: pendingRewardData,
+
+                // Unified and clean reward object for mobile
+                reward: {
+                    status: rewardInfo.status, // 'has_points' | 'waiting_timer' | 'ready_to_claim'
+                    canClaim: rewardInfo.canClaim,
+                    rewardAmount: rewardInfo.rewardAmount,
+                    waitSeconds: rewardInfo.waitSeconds,
+                    eligibleAt: rewardInfo.eligibleAt,
+                    message: rewardInfo.message
+                },
+
+                // Backwards compatibility fields
+                canClaimReward: rewardInfo.canClaim,
+                cooldownSeconds: rewardInfo.waitSeconds,
                 activePromotion: activePromo ? { active: true, amount: activePromo.rewardValue } : null
             }
         });

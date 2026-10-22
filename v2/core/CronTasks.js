@@ -12,11 +12,6 @@ class CronTasks {
             console.log('[V2 Cron] Sweeping Zombie Pending Jobs...');
             await this.sweepZombieJobs();
         });
-
-        // Run every minute: process due rewards (30-minute delayed claims)
-        cron.schedule('* * * * *', async () => {
-            await RewardService.processDueRewards(this.io);
-        });
     }
 
     /**
