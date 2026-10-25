@@ -80,42 +80,11 @@ class UserSyncService {
      */
     static async syncSingleUser(uid) {
         if (!uid) return null;
-        const db = this.getFirestoreDb();
-        if (!db) {
-            return await User.findOne({ uid });
-        }
-
-        try {
-            const doc = await db.collection('users').doc(uid).get();
-            if (!doc.exists) {
-                return await User.findOne({ uid });
-            }
-
-            const mapped = this.mapUserData(doc.id, doc.data());
-            
-            // Upsert into MongoDB without overwriting cookies or role
-            const user = await User.findOneAndUpdate(
-                { uid: mapped.uid },
-                { 
-                    $set: mapped,
-                    $setOnInsert: {
-                        role: doc.data().role || 'client',
-                        facebookCookies: '',
-                        instagramCookies: ''
-                    }
-                },
-                { upsert: true, new: true, setDefaultsOnInsert: true }
-            );
-
-            return user;
-        } catch (error) {
-            console.error(`[UserSyncService] Error syncing user ${uid}:`, error.message);
-            return await User.findOne({ uid });
-        }
+        return await User.findOne({ uid });
     }
 
     /**
-     * Authenticate, sync from Firestore, or register a new user in MongoDB
+     * Authenticate or register a new user directly in MongoDB (Zero Firestore Reads)
      */
     static async syncOrRegisterUser({ uid, email, name, photo, fcm }) {
         if (!uid) throw new Error('User ID (uid) is required');
@@ -140,41 +109,6 @@ class UserSyncService {
 
             user = await User.findByIdAndUpdate(user._id, { $set: updateFields }, { new: true });
             return user;
-        }
-
-        // 2. User not in MongoDB. Check Firestore (in case they are an existing V1 user)
-        const db = this.getFirestoreDb();
-        if (db) {
-            try {
-                const doc = await db.collection('users').doc(uid).get();
-                if (doc.exists) {
-                    const mapped = this.mapUserData(doc.id, doc.data());
-                    if (fcm) mapped.fcm = fcm;
-                    if (photo) mapped.photo = photo;
-                    if (name) {
-                        mapped.name = name;
-                        mapped.nameNormalized = normalizedName;
-                    }
-                    mapped.lastSignIn = new Date();
-                    mapped.migratedToV2 = true;
-
-                    user = await User.findOneAndUpdate(
-                        { uid: mapped.uid },
-                        { 
-                            $set: mapped,
-                            $setOnInsert: {
-                                role: doc.data().role || 'client',
-                                facebookCookies: '',
-                                instagramCookies: ''
-                            }
-                        },
-                        { upsert: true, new: true, setDefaultsOnInsert: true }
-                    );
-                    return user;
-                }
-            } catch (err) {
-                console.error('[UserSyncService] Error checking Firestore for migration:', err.message);
-            }
         }
 
         // 3. Brand new user! Create directly in MongoDB with initial points from global Settings

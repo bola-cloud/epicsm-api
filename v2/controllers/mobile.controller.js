@@ -25,18 +25,18 @@ exports.mCreateJobV2 = async (req, res) => {
             return res.status(200).json({});
         }
 
-        // Get the user from Firestore to check VIP status (Bypass for E2E Testing)
+        // Get the user from MongoDB to check VIP status
         let isVipUser = false;
         if (uid === 'TEST_E2E') {
             isVipUser = true;
         } else {
-            const userRef = db.collection('users').doc(uid);
-            const userDoc = await userRef.get();
+            const User = require('../../models/user');
+            const mongoUser = await User.findOne({ uid });
 
-            if (!userDoc.exists) {
+            if (!mongoUser) {
                 return res.status(404).json({ message: 'User not found' });
             }
-            isVipUser = userDoc.data().isVip;
+            isVipUser = Boolean(mongoUser.isVip);
         }
 
         const comments = Array.isArray(req.body.comments)
@@ -350,24 +350,9 @@ exports.mUpdateCookies = async (req, res) => {
         const existingUser = await User.findOne({ uid: uid });
         
         if (!existingUser) {
-            // User doesn't exist in MongoDB yet, try to get from Firebase Firestore
-            try {
-                if (db) {
-                    const userDoc = await db.collection('users').doc(uid).get();
-                    if (userDoc.exists) {
-                        const data = userDoc.data();
-                        setOnInsertData['email'] = data.email || `${uid}@mobile.worker`;
-                        setOnInsertData['nom'] = data.nom || '';
-                        setOnInsertData['prenom'] = data.prenom || '';
-                    } else {
-                        setOnInsertData['email'] = `${uid}@mobile.worker`;
-                    }
-                } else {
-                    setOnInsertData['email'] = `${uid}@mobile.worker`;
-                }
-            } catch (fbError) {
-                setOnInsertData['email'] = `${uid}@mobile.worker`;
-            }
+            setOnInsertData['email'] = `${uid}@mobile.worker`;
+            setOnInsertData['nom'] = '';
+            setOnInsertData['prenom'] = '';
         }
 
         const updatedUser = await User.findOneAndUpdate(

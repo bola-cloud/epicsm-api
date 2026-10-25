@@ -883,15 +883,13 @@ exports.mCreateJob_legacy = async (req, res) => {
             return res.status(200).json({});
         }
 
-        // Get the user from Firestore to check VIP status
-        const userRef = db.collection('users').doc(uid);
-        const userDoc = await userRef.get();
+        // Get the user from MongoDB to check VIP status
+        const User = require('../../models/user');
+        const userData = await User.findOne({ uid }).lean();
 
-        if (!userDoc.exists) {
+        if (!userData) {
             return res.status(404).json({ message: 'User not found' });
         }
-
-        const userData = userDoc.data();
 
         const comments = Array.isArray(req.body.comments)
             ? req.body.comments.filter(comment => typeof comment === 'string' && comment.trim().length > 0)

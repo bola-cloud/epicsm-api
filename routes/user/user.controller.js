@@ -17,20 +17,7 @@ try {
 
 
 
-// One-time script to normalize names in the Firestore database
-const normalizeNames = async () => {
-    const usersRef = db.collection('users');
-    const snapshot = await usersRef.get();
 
-    snapshot.forEach(async (doc) => {
-        const userData = doc.data();
-        const normalizedName = userData.name.replace(/\s+/g, '').toLowerCase();
-
-        await usersRef.doc(doc.id).update({
-            nameNormalized: normalizedName,
-        });
-    });
-};
 
 // Create a new user
 exports.CreateUser = async (req, res) => {
@@ -260,17 +247,7 @@ exports.GetFirebaseUserById = async (req, res) => {
         const query = userId.match(/^[0-9a-fA-F]{24}$/) ? { $or: [{ _id: userId }, { uid: userId }] } : { uid: userId };
         let user = await User.findOne(query);
 
-        if (!user && db) {
-            try {
-                const userRef = db.collection('users').doc(userId);
-                const doc = await userRef.get();
-                if (doc.exists) {
-                    user = { id: doc.id, ...doc.data() };
-                }
-            } catch (fErr) {
-                console.warn('Firestore fallback fetch warning:', fErr.message);
-            }
-        }
+
 
         if (!user) {
             return res.status(404).json({ message: 'User not found' });
@@ -369,12 +346,9 @@ exports.DeleteFirebaseUser = async (req, res) => {
         await User.findOneAndDelete(query);
 
         try {
-            if (db) {
-                await db.collection('users').doc(userId).delete();
-            }
             await admin.auth().deleteUser(userId);
         } catch (fErr) {
-            console.warn('Firebase delete user warning:', fErr.message);
+            console.warn('Firebase Auth delete user warning:', fErr.message);
         }
 
         res.status(200).json({ message: `User ${userId} has been deleted.` });
@@ -397,11 +371,8 @@ exports.BanUser = async (req, res) => {
 
         try {
             await admin.auth().updateUser(userId, { disabled: true });
-            if (db) {
-                await db.collection('users').doc(userId).update({ banned: true });
-            }
         } catch (fErr) {
-            console.warn('Firebase ban warning:', fErr.message);
+            console.warn('Firebase auth ban warning:', fErr.message);
         }
 
         res.status(200).json({ message: `User ${userId} has been banned (disabled).` });
@@ -425,11 +396,8 @@ exports.UnbanUser = async (req, res) => {
 
         try {
             await admin.auth().updateUser(userId, { disabled: false });
-            if (db) {
-                await db.collection('users').doc(userId).update({ banned: false });
-            }
         } catch (fErr) {
-            console.warn('Firebase unban warning:', fErr.message);
+            console.warn('Firebase auth unban warning:', fErr.message);
         }
 
         res.status(200).json({ message: `User ${userId} has been unbanned (enabled).` });
@@ -482,15 +450,7 @@ exports.AddBalanceToUser = async (req, res) => {
             return res.status(404).json({ message: 'User not found' });
         }
 
-        // Optional legacy sync to firestore if dollars were modified
-        if (targetField === 'dollars' && db) {
-            try {
-                const userRef = db.collection('users').doc(userId);
-                await userRef.update({ dollars: updatedUser.dollars });
-            } catch (fErr) {
-                // Ignore firestore errors
-            }
-        }
+        // Updated in MongoDB only
 
         const currencyName = targetField === 'coins' ? 'نقطة (Coins)' : 'دولار ($)';
         const currentVal = updatedUser[targetField];
@@ -595,22 +555,12 @@ exports.UpdateDailyReward = async (req, res) => {
             return res.status(400).json({ message: 'dailyRewards must be a valid positive number' });
         }
 
-        // 1. Update in Firestore (if available)
-        try {
-            if (db) {
-                const userRef = db.collection('users').doc(userId);
-                const doc = await userRef.get();
-                if (doc.exists) {
-                    await userRef.update({ dailyRewards: numReward });
-                }
-            }
-        } catch (fErr) {
-            console.error("Firestore update reward warning:", fErr.message);
+        // Update in MongoDB
+        const query = userId.match(/^[0-9a-fA-F]{24}$/) ? { $or: [{ _id: userId }, { uid: userId }] } : { uid: userId };
+        const updated = await User.findOneAndUpdate(query, { $set: { dailyRewards: numReward } }, { new: true });
+        if (!updated) {
+            return res.status(404).json({ message: 'User not found' });
         }
-
-        // 2. Update in MongoDB
-        const query = userId.match(/^[0-9a-fA-F]{24}$/) ? { _id: userId } : { uid: userId };
-        await User.findOneAndUpdate(query, { $set: { dailyRewards: numReward } });
 
         res.status(200).json({ message: `User ${userId}'s dailyRewards updated to ${numReward}.` });
     } catch (error) {
@@ -627,20 +577,17 @@ exports.ExportFirebaseUsersCSV = async (req, res) => {
             return res.status(401).json({ message: 'Unauthorized' });
         }
 
-        const usersRef = db.collection("users");
-        const snapshot = await usersRef.get();
+        const users = await User.find({}, { email: 1, _id: 0 }).lean();
 
-        const users = snapshot.docs.map((doc) => ({
-            email: doc.data().email, // Extract only the email field
-        }));
+        const validUsers = users.filter(u => u.email && u.email.trim().length > 0);
 
-        if (users.length === 0) {
+        if (validUsers.length === 0) {
             return res.status(404).json({ message: "No users found" });
         }
 
         const fields = ["email"];
         const json2csvParser = new Parser({ fields });
-        const csv = json2csvParser.parse(users);
+        const csv = json2csvParser.parse(validUsers);
 
         res.setHeader("Content-Type", "text/csv");
         res.setHeader("Content-Disposition", "attachment; filename=users.csv");
@@ -659,20 +606,13 @@ exports.GetBannedUsers = async (req, res) => {
             return res.status(401).json({ message: 'Unauthorized' });
         }
 
-        const usersRef = admin.firestore().collection('users');
-        const bannedSnapshot = await usersRef
-            .where('banned', '==', true)
-            .get();
+        const bannedUsers = await User.find({ banned: true }).lean();
+        const formattedUsers = bannedUsers.map(u => ({
+            id: u.uid || u._id.toString(),
+            ...u
+        }));
 
-        const bannedUsers = [];
-        bannedSnapshot.forEach(doc => {
-            bannedUsers.push({
-                id: doc.id,
-                ...doc.data(),
-            });
-        });
-
-        return res.status(200).json(bannedUsers);
+        return res.status(200).json(formattedUsers);
 
     } catch (error) {
         console.error('Error fetching banned users:', error);
@@ -699,18 +639,20 @@ exports.UpdateUserVipStatus = async (req, res) => {
             return res.status(400).json({ message: 'isVip field is required' });
         }
 
-        const userRef = db.collection('users').doc(userId);
-        const doc = await userRef.get();
+        const query = userId.match(/^[0-9a-fA-F]{24}$/) ? { $or: [{ _id: userId }, { uid: userId }] } : { uid: userId };
+        const updated = await User.findOneAndUpdate(
+            query,
+            { $set: { isVip: Boolean(isVip) } },
+            { new: true }
+        );
 
-        if (!doc.exists) {
+        if (!updated) {
             return res.status(404).json({ message: 'User not found' });
         }
 
-        await userRef.update({ isVip: isVip });
-
         res.status(200).json({
             message: `User ${userId}'s VIP status updated to ${isVip ? 'enabled' : 'disabled'}.`,
-            isVip: isVip
+            isVip: Boolean(isVip)
         });
     } catch (error) {
         console.error('Error updating VIP status:', error);
