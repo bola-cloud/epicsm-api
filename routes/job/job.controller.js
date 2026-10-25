@@ -4,14 +4,7 @@ const JobV2 = require('../../v2/models/JobV2');
 const Ping = require('../../models/ping');
 const Blocked = require('../../models/blocked');
 const authController = require('../authentication/authentication.controller')
-const admin = require("firebase-admin");
 
-let db = null;
-try {
-    db = admin.firestore();
-} catch (e) {
-    console.error("Firebase not initialized in job.controller");
-}
 
 function formatV2Job(j) {
     if (!j) return null;

@@ -1,21 +1,6 @@
-const admin = require('firebase-admin');
 const User = require('../../models/user');
 
 class UserSyncService {
-    static getFirestoreDb() {
-        try {
-            if (!admin.apps.length) {
-                const serviceAccount = require('../../utils/epicsm-app-firebase-adminsdk-a6csy-58907dbb09.json');
-                admin.initializeApp({
-                    credential: admin.credential.cert(serviceAccount)
-                });
-            }
-            return admin.firestore();
-        } catch (e) {
-            console.error('[UserSyncService] Firebase Admin init error:', e.message);
-            return null;
-        }
-    }
 
     /**
      * Map Firestore user document data into MongoDB User model format
@@ -137,114 +122,6 @@ class UserSyncService {
 
         await user.save();
         return user;
-    }
-
-    /**
-     * Bulk migration script to migrate all Firestore users to MongoDB
-     */
-    static async migrateAllUsers(batchSize = 1000, onProgress = null) {
-        const db = this.getFirestoreDb();
-        if (!db) throw new Error('Firestore DB not initialized');
-
-        console.log('[UserSyncService] Starting bulk migration from Firestore to MongoDB...');
-        let totalProcessed = 0;
-        let totalUpserted = 0;
-        let totalModified = 0;
-        let totalErrors = 0;
-        let lastDoc = null;
-        let hasMore = true;
-
-        while (hasMore) {
-            let query = db.collection('users').orderBy(admin.firestore.FieldPath.documentId()).limit(batchSize);
-            if (lastDoc) {
-                query = query.startAfter(lastDoc);
-            }
-
-            const snapshot = await query.get();
-            if (snapshot.empty) {
-                hasMore = false;
-                break;
-            }
-
-            const seenEmailsInBatch = new Set();
-            const bulkOps = [];
-            for (const doc of snapshot.docs) {
-                const data = doc.data();
-                const mapped = this.mapUserData(doc.id, data);
-
-                // Prevent email collision within same batch
-                if (seenEmailsInBatch.has(mapped.email)) {
-                    mapped.email = `${mapped.uid}@temporary.com`;
-                }
-                seenEmailsInBatch.add(mapped.email);
-
-                bulkOps.push({
-                    updateOne: {
-                        filter: { uid: mapped.uid },
-                        update: {
-                            $set: {
-                                uid: mapped.uid,
-                                email: mapped.email,
-                                name: mapped.name,
-                                nameNormalized: mapped.nameNormalized,
-                                nom: mapped.nom,
-                                prenom: mapped.prenom,
-                                photo: mapped.photo,
-                                fcm: mapped.fcm,
-                                provider: mapped.provider,
-                                coins: mapped.coins,
-                                dollars: mapped.dollars,
-                                dailyRewards: mapped.dailyRewards,
-                                banned: mapped.banned,
-                                isVip: mapped.isVip,
-                                migratedToV2: true,
-                                created: mapped.created,
-                                lastSignIn: mapped.lastSignIn
-                            },
-                            $setOnInsert: {
-                                role: data.role || 'client',
-                                facebookCookies: '',
-                                instagramCookies: ''
-                            }
-                        },
-                        upsert: true
-                    }
-                });
-            }
-
-            if (bulkOps.length > 0) {
-                try {
-                    const result = await User.bulkWrite(bulkOps, { ordered: false });
-                    totalUpserted += (result.upsertedCount || 0);
-                    totalModified += (result.modifiedCount || 0);
-                } catch (bErr) {
-                    if (bErr.result) {
-                        totalUpserted += (bErr.result.nUpserted || bErr.result.upsertedCount || 0);
-                        totalModified += (bErr.result.nModified || bErr.result.modifiedCount || 0);
-                        totalErrors += (bErr.writeErrors ? bErr.writeErrors.length : 1);
-                    } else {
-                        console.error('[UserSyncService] Batch bulkWrite error:', bErr.message);
-                        totalErrors += bulkOps.length;
-                    }
-                }
-            }
-
-            totalProcessed += snapshot.docs.length;
-            lastDoc = snapshot.docs[snapshot.docs.length - 1];
-
-            if (onProgress) {
-                onProgress({ totalProcessed, totalUpserted, totalModified, totalErrors });
-            }
-
-            console.log(`[UserSyncService] Progress: ${totalProcessed} users processed (${totalUpserted} inserted, ${totalModified} updated, ${totalErrors} errors)...`);
-
-            if (snapshot.docs.length < batchSize) {
-                hasMore = false;
-            }
-        }
-
-        console.log(`[UserSyncService] Bulk migration complete! Processed: ${totalProcessed}, Inserted: ${totalUpserted}, Updated: ${totalModified}, Errors: ${totalErrors}`);
-        return { totalProcessed, totalUpserted, totalModified, totalErrors };
     }
 }
 

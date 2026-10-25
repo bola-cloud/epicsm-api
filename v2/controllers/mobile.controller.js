@@ -2,14 +2,7 @@ const JobV2 = require('../models/JobV2');
 const JobActionV2 = require('../models/JobActionV2');
 const Blocked = require('../../models/blocked');
 const { createNewJobV2 } = require('../index');
-const admin = require("firebase-admin");
 
-let db = null;
-try {
-    db = admin.firestore();
-} catch (e) {
-    console.error("Firebase not initialized in mobile.controller v2");
-}
 
 exports.mCreateJobV2 = async (req, res) => {
     try {
