@@ -10,5 +10,8 @@ router
     .put(PromotionController.updatePromotion)
     .delete(PromotionController.deletePromotion);
 
+router
+    .route('/:id')
+    .delete(PromotionController.deletePromotion);
 
 module.exports = router;

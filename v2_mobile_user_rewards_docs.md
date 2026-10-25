@@ -109,10 +109,22 @@ sequenceDiagram
 
     "canClaimReward": false,
     "cooldownSeconds": 1420,
-    "activePromotion": null
+    "activePromotion": null,
+    "upcomingPromotion": {
+      "title": "Happy Hour",
+      "startAt": "2026-10-25T16:00:00.000Z",
+      "endAt": "2026-10-25T17:00:00.000Z",
+      "rewardAmount": 100
+    }
   }
 }
 ```
+
+> [!TIP]
+> **التعامل مع البروموشن في تطبيق الموبايل:**
+> 1. عند وجود `upcomingPromotion`: يعرض التطبيق شريط تنبيهي للمستخدم يخبره بالعرض القادم وموعده (مثلاً: "عرض قادم الساعة 6:00 مساءً بمكافأة 100 نقطة").
+> 2. عند دخول وقت العرض، يتحول تلقائياً إلى `activePromotion` وتصبح قيمة المكافأة `rewardAmount` مضاعفة فورياً بدون الحاجة لأي تعديل من التطبيق.
+
 
 ---
 

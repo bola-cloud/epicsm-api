@@ -17,6 +17,8 @@ function formatV2Job(j) {
     if (!j) return null;
     const isCompleted = (typeof j.maxCount === 'number' && typeof j.likeCount === 'number' && j.maxCount > 0 && j.likeCount >= j.maxCount) ||
         j.status === 'Completed' || j.status === 'completed';
+    const isFallback = j.resolutionStatus === 'fallback';
+    const resolvedId = j.target_id || j.mediaId || j.userPk;
     return {
         _id: j._id,
         jobId: j.jobId,
@@ -28,7 +30,7 @@ function formatV2Job(j) {
         actionType: j.actionType,
         maxCount: j.maxCount,
         likeCount: j.likeCount || 0,
-        isVip: j.isVip || false,
+        isVip: Boolean(j.isVip),
         status: isCompleted ? 'Completed' : ((j.status === 'active' || j.status === 'Active') ? 'Active' : (j.status || 'Off')),
         isLive: (j.status === 'active' || j.status === 'Active') && !isCompleted,
         createdAt: j.createdAt,
@@ -37,6 +39,13 @@ function formatV2Job(j) {
         creatorId: j.creatorId || j.uid || '----admin----',
         comments: j.comments || [],
         country: j.country || 'all',
+        resolutionStatus: j.resolutionStatus || 'resolved',
+        resolutionError: j.resolutionError || null,
+        executionMethod: isFallback ? 'رابط مباشر (Fallback)' : (resolvedId ? 'سكربت آلي (Script Resolved)' : 'نظام V2 الذكي'),
+        target_id: j.target_id,
+        mediaId: j.mediaId,
+        userPk: j.userPk,
+        resolvedId: resolvedId,
         version: 'V2',
         isV2: true
     };
@@ -55,15 +64,45 @@ exports.CreateJob = async (req, res) => {
             ? req.body.comments.filter(comment => typeof comment === 'string' && comment.trim().length > 0)
             : [];
 
-        const newJob = new Job({
-            ...req.body,
+        const targetLink = req.body.link || req.body.targetLink;
+        if (!targetLink) {
+            return res.status(400).json({ message: 'Link is required' });
+        }
+
+        const platform = (req.body.platform || 'facebook').toLowerCase();
+        let actionType = 'like';
+        const typeStr = (req.body.linkTypeName || req.body.type || '').toLowerCase();
+        if (typeStr.includes('follow') || typeStr.includes('friend')) {
+            actionType = 'follow';
+        } else if (typeStr.includes('comment')) {
+            actionType = 'comment';
+        } else if (typeStr.includes('view')) {
+            actionType = 'view';
+        } else if (typeStr.includes('share')) {
+            actionType = 'share';
+        }
+
+        const { createNewJobV2 } = require('../../v2/index');
+        const jobData = {
+            targetLink,
+            platform,
+            actionType,
+            type: req.body.type || 'post',
+            linkTypeName: req.body.linkTypeName || 'Like',
+            maxCount: parseInt(req.body.maxCount) || 1,
+            isVip: Boolean(req.body.isVip),
             comments,
-            uid: isUser._id,
-            country: "all"
-        });
-        const savedJob = await newJob.save();
-        res.status(201).json(savedJob);
+            country: req.body.country || 'all',
+            creatorId: isUser._id ? isUser._id.toString() : '----admin----',
+            resolutionStatus: 'pending'
+        };
+
+        const savedJob = await createNewJobV2(jobData);
+        console.log(`[Dashboard CreateJob] Routed new dashboard job to V2 (JobV2 _id: ${savedJob._id}, isVip: ${savedJob.isVip})`);
+
+        res.status(201).json(formatV2Job(savedJob));
     } catch (error) {
+        console.error('[Dashboard CreateJob] Error creating V2 job:', error);
         res.status(500).json({ message: error.message });
     }
 };
@@ -217,10 +256,10 @@ exports.GetJobById = async (req, res) => {
         const id = req.params.id;
         let job = null;
         if (mongoose.Types.ObjectId.isValid(id)) {
-            job = await Job.findById(id).lean();
+            const j2 = await JobV2.findById(id).lean();
+            if (j2) job = formatV2Job(j2);
             if (!job) {
-                const j2 = await JobV2.findById(id).lean();
-                if (j2) job = formatV2Job(j2);
+                job = await Job.findById(id).lean();
             }
         }
         if (!job) {
@@ -232,6 +271,61 @@ exports.GetJobById = async (req, res) => {
         }
 
         if (!job) return res.status(404).json({ message: 'Job not found' });
+
+        // Fetch execution actions from JobActionV2 (who completed this order and how)
+        try {
+            const JobActionV2 = require('../../v2/models/JobActionV2');
+            const User = require('../../models/user');
+
+            const queryJobIds = [job.jobId];
+            if (job._id) queryJobIds.push(job._id.toString());
+
+            const actions = await JobActionV2.find({ jobId: { $in: queryJobIds } })
+                .sort({ createdAt: -1 })
+                .limit(100)
+                .lean();
+
+            const userIds = [...new Set(actions.map(a => a.userId).filter(Boolean))];
+            const users = await User.find(
+                { uid: { $in: userIds } },
+                { uid: 1, email: 1, name: 1, photo: 1 }
+            ).lean();
+            const userMap = new Map();
+            users.forEach(u => userMap.set(u.uid, u));
+
+            const enrichedActions = actions.map(a => {
+                const u = userMap.get(a.userId);
+                let execMethod = 'Worker App';
+                if (a.reason) {
+                    if (a.reason.includes('script') || a.reason.includes('direct')) {
+                        execMethod = 'سكريبت مباشر (Script Direct)';
+                    } else if (a.reason.includes('fallback')) {
+                        execMethod = 'متصفح يدوي (Fallback)';
+                    } else {
+                        execMethod = a.reason;
+                    }
+                }
+                return {
+                    _id: a._id,
+                    userId: a.userId,
+                    userName: u?.name || 'مستخدم',
+                    userEmail: u?.email || a.userId,
+                    userPhoto: u?.photo || '',
+                    status: a.status,
+                    reason: a.reason || 'Normal interaction',
+                    executionMethod: execMethod,
+                    createdAt: a.createdAt
+                };
+            });
+
+            job.actions = enrichedActions;
+            job.actionsCount = actions.length;
+        } catch (actionErr) {
+            console.error('[GetJobById] Error fetching actions:', actionErr.message);
+            job.actions = [];
+            job.actionsCount = 0;
+        }
+
         res.status(200).json(job);
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -406,6 +500,11 @@ exports.SearchJobs = async (req, res) => {
                 { type: { $regex: escaped, $options: 'i' } }
             ]
         };
+
+        if (mongoose.Types.ObjectId.isValid(trimmed)) {
+            searchCriteriaV1.$or.push({ _id: new mongoose.Types.ObjectId(trimmed) });
+            searchCriteriaV2.$or.push({ _id: new mongoose.Types.ObjectId(trimmed) });
+        }
 
         for (const pat of searchPatterns) {
             searchCriteriaV1.$or.push({ link: { $regex: pat, $options: 'i' } });

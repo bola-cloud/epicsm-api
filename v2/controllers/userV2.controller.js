@@ -37,7 +37,10 @@ exports.mGetProfile = async (req, res) => {
         const dollarsToPointsValue = Math.floor(userDollars * pointsPerDollar);
 
         const PromotionService = require('../services/promotionService');
-        const activePromo = await PromotionService.getCurrentPromotion();
+        const [activePromo, upcomingPromo] = await Promise.all([
+            PromotionService.getCurrentPromotion(),
+            PromotionService.getUpcomingPromotion()
+        ]);
         const effectiveDailyReward = activePromo ? activePromo.rewardValue : globalReward;
 
         return res.status(200).json({
@@ -67,10 +70,23 @@ exports.mGetProfile = async (req, res) => {
                     message: rewardInfo.message
                 },
 
-                // Backwards compatibility fields
+                // Backwards compatibility & promotion fields
                 canClaimReward: rewardInfo.canClaim,
                 cooldownSeconds: rewardInfo.waitSeconds,
-                activePromotion: activePromo ? { active: true, amount: activePromo.rewardValue } : null
+                activePromotion: activePromo ? {
+                    active: true,
+                    title: activePromo.title || 'Happy Hour',
+                    startAt: activePromo.startAt,
+                    endAt: activePromo.endAt,
+                    amount: activePromo.rewardValue,
+                    rewardAmount: activePromo.rewardValue
+                } : null,
+                upcomingPromotion: upcomingPromo ? {
+                    title: upcomingPromo.title || 'Happy Hour',
+                    startAt: upcomingPromo.startAt,
+                    endAt: upcomingPromo.endAt,
+                    rewardAmount: upcomingPromo.rewardAmount
+                } : null
             }
         });
     } catch (error) {
@@ -148,7 +164,10 @@ exports.mGoogleAuthSync = async (req, res) => {
         const dollarsToPointsValue = Math.floor(userDollars * pointsPerDollar);
 
         const PromotionService = require('../services/promotionService');
-        const activePromo = await PromotionService.getCurrentPromotion();
+        const [activePromo, upcomingPromo] = await Promise.all([
+            PromotionService.getCurrentPromotion(),
+            PromotionService.getUpcomingPromotion()
+        ]);
         const effectiveDailyReward = activePromo ? activePromo.rewardValue : globalReward;
 
         return res.status(200).json({
@@ -179,10 +198,23 @@ exports.mGoogleAuthSync = async (req, res) => {
                     message: rewardInfo.message
                 },
 
-                // Backwards compatibility fields
+                // Backwards compatibility & promotion fields
                 canClaimReward: rewardInfo.canClaim,
                 cooldownSeconds: rewardInfo.waitSeconds,
-                activePromotion: activePromo ? { active: true, amount: activePromo.rewardValue } : null
+                activePromotion: activePromo ? {
+                    active: true,
+                    title: activePromo.title || 'Happy Hour',
+                    startAt: activePromo.startAt,
+                    endAt: activePromo.endAt,
+                    amount: activePromo.rewardValue,
+                    rewardAmount: activePromo.rewardValue
+                } : null,
+                upcomingPromotion: upcomingPromo ? {
+                    title: upcomingPromo.title || 'Happy Hour',
+                    startAt: upcomingPromo.startAt,
+                    endAt: upcomingPromo.endAt,
+                    rewardAmount: upcomingPromo.rewardAmount
+                } : null
             }
         });
     } catch (error) {

@@ -93,6 +93,9 @@ exports.getJobs = async (req, res) => {
             for (const pat of searchPatterns) {
                 orConditions.push({ targetLink: { $regex: pat, $options: 'i' } });
             }
+            if (mongoose.Types.ObjectId.isValid(trimmed)) {
+                orConditions.push({ _id: new mongoose.Types.ObjectId(trimmed) });
+            }
             orConditions.push(
                 { target_id: { $regex: escapeRegex(trimmed), $options: 'i' } },
                 { mediaId: { $regex: escapeRegex(trimmed), $options: 'i' } },
