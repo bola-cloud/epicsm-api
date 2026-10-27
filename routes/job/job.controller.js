@@ -112,28 +112,9 @@ exports.GetJobs = async (req, res) => {
         const limit = parseInt(req.query.limit) || 10;
         const skip = (page - 1) * limit;
 
-        const [v2Count, v1Count] = await Promise.all([
-            JobV2.countDocuments(),
-            Job.countDocuments()
-        ]);
-        const totalCount = v2Count + v1Count;
-
-        let jobs = [];
-        if (skip < v2Count) {
-            const v2Limit = Math.min(limit, v2Count - skip);
-            const rawV2 = await JobV2.find().sort({ createdAt: -1 }).skip(skip).limit(v2Limit).lean();
-            jobs.push(...rawV2.map(formatV2Job));
-
-            if (jobs.length < limit) {
-                const remaining = limit - jobs.length;
-                const rawV1 = await Job.find().sort({ createdAt: -1 }).limit(remaining).lean();
-                jobs.push(...rawV1.map(j => ({ ...j, version: 'V1', isV2: false })));
-            }
-        } else {
-            const v1Skip = skip - v2Count;
-            const rawV1 = await Job.find().sort({ createdAt: -1 }).skip(v1Skip).limit(limit).lean();
-            jobs.push(...rawV1.map(j => ({ ...j, version: 'V1', isV2: false })));
-        }
+        const totalCount = await Job.countDocuments();
+        const rawV1 = await Job.find().sort({ createdAt: -1 }).skip(skip).limit(limit).lean();
+        const jobs = rawV1.map(j => ({ ...j, version: 'V1', isV2: false }));
 
         res.status(200).json({
             jobs,
@@ -141,7 +122,7 @@ exports.GetJobs = async (req, res) => {
                 total: totalCount,
                 page,
                 limit,
-                totalPages: Math.ceil(totalCount / limit)
+                totalPages: Math.ceil(totalCount / limit) || 1
             }
         });
     } catch (error) {
@@ -157,23 +138,14 @@ exports.GetLatestJobs = async (req, res) => {
             return res.status(401).json({ message: 'Unauthorized' });
         }
 
-        const [v2Jobs, v1Jobs] = await Promise.all([
-            JobV2.find().sort({ createdAt: -1 }).limit(10).lean(),
-            Job.find().sort({ createdAt: -1 }).limit(10).lean()
-        ]);
-
-        const mappedV2 = v2Jobs.map(formatV2Job);
+        const v1Jobs = await Job.find().sort({ createdAt: -1 }).limit(10).lean();
         const mappedV1 = v1Jobs.map(j => ({
             ...j,
             version: 'V1',
             isV2: false
         }));
 
-        const combined = [...mappedV2, ...mappedV1]
-            .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
-            .slice(0, 10);
-
-        res.status(200).json(combined);
+        res.status(200).json(mappedV1);
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -183,15 +155,9 @@ exports.GetJobsByPlatform = async (req, res) => {
     try {
         const { platform } = req.params;
         const platRegex = new RegExp(`^${platform}$`, 'i');
-        const [v2Jobs, v1Jobs] = await Promise.all([
-            JobV2.find({ platform: platRegex }).sort({ createdAt: -1 }).lean(),
-            Job.find({ platform: platRegex }).sort({ createdAt: -1 }).lean()
-        ]);
-
-        const combined = [...v2Jobs.map(formatV2Job), ...v1Jobs.map(j => ({ ...j, version: 'V1', isV2: false }))]
-            .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
-
-        res.status(200).json(combined);
+        const v1Jobs = await Job.find({ platform: platRegex }).sort({ createdAt: -1 }).lean();
+        const mappedV1 = v1Jobs.map(j => ({ ...j, version: 'V1', isV2: false }));
+        res.status(200).json(mappedV1);
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -526,18 +492,13 @@ exports.SearchJobs = async (req, res) => {
             searchCriteriaV2.$or.push({ createdAt: { $gte: startOfDay, $lte: endOfDay } });
         }
 
-        const [v2Matches, v1Matches, countV2, countV1] = await Promise.all([
-            JobV2.find(searchCriteriaV2).sort({ createdAt: -1 }).limit(limit * page).lean(),
-            Job.find(searchCriteriaV1).sort({ createdAt: -1 }).limit(limit * page).lean(),
-            JobV2.countDocuments(searchCriteriaV2),
+        const [v1Matches, countV1] = await Promise.all([
+            Job.find(searchCriteriaV1).sort({ createdAt: -1 }).skip(skipDocs).limit(limit).lean(),
             Job.countDocuments(searchCriteriaV1)
         ]);
 
-        const total = countV2 + countV1;
-        const mappedV2 = v2Matches.map(formatV2Job);
-        const mappedV1 = v1Matches.map(j => ({ ...j, version: 'V1', isV2: false }));
-        const allMatched = [...mappedV2, ...mappedV1].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
-        const paginated = allMatched.slice(skipDocs, skipDocs + limit);
+        const total = countV1;
+        const paginated = v1Matches.map(j => ({ ...j, version: 'V1', isV2: false }));
 
         const totalPages = Math.ceil(total / limit);
         const hasNextPage = page < totalPages;
@@ -656,18 +617,13 @@ exports.FilterJobs = async (req, res) => {
             filterCriteriaV2.$or = [{ isVip: false }, { isVip: { $exists: false } }];
         }
 
-        const [v2Filtered, v1Filtered, countV2, countV1] = await Promise.all([
-            JobV2.find(filterCriteriaV2).sort({ createdAt: -1 }).limit(limit * page).lean(),
-            Job.find(filterCriteriaV1).sort({ createdAt: -1 }).limit(limit * page).lean(),
-            JobV2.countDocuments(filterCriteriaV2),
+        const [v1Filtered, countV1] = await Promise.all([
+            Job.find(filterCriteriaV1).sort({ createdAt: -1 }).skip(skipDocs).limit(limit).lean(),
             Job.countDocuments(filterCriteriaV1)
         ]);
 
-        const total = countV2 + countV1;
-        const mappedV2 = v2Filtered.map(formatV2Job);
-        const mappedV1 = v1Filtered.map(j => ({ ...j, version: 'V1', isV2: false }));
-        const allMatched = [...mappedV2, ...mappedV1].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
-        const paginated = allMatched.slice(skipDocs, skipDocs + limit);
+        const total = countV1;
+        const paginated = v1Filtered.map(j => ({ ...j, version: 'V1', isV2: false }));
 
         const totalPages = Math.ceil(total / limit);
         const hasNextPage = page < totalPages;

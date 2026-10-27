@@ -101,8 +101,17 @@ exports.getJobs = async (req, res) => {
                 { mediaId: { $regex: escapeRegex(trimmed), $options: 'i' } },
                 { userPk: { $regex: escapeRegex(trimmed), $options: 'i' } },
                 { jobId: { $regex: escapeRegex(trimmed), $options: 'i' } },
-                { creatorId: { $regex: escapeRegex(trimmed), $options: 'i' } }
+                { creatorId: { $regex: escapeRegex(trimmed), $options: 'i' } },
+                { linkTypeName: { $regex: escapeRegex(trimmed), $options: 'i' } },
+                { actionType: { $regex: escapeRegex(trimmed), $options: 'i' } },
+                { country: { $regex: escapeRegex(trimmed), $options: 'i' } },
+                { type: { $regex: escapeRegex(trimmed), $options: 'i' } }
             );
+
+            if (!isNaN(trimmed) && trimmed !== '') {
+                const numVal = parseInt(trimmed);
+                orConditions.push({ likeCount: numVal }, { maxCount: numVal });
+            }
 
             query.$or = orConditions;
         }
