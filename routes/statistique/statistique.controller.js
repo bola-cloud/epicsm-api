@@ -184,70 +184,16 @@ exports.GetUserVersion = async (req, res) => {
 };
 
 
-// Logs
+// Logs - Disabled to save server disk space and prevent DB bloat
 exports.CreateLog = async (req, res) => {
-    try {
-        const { userId, type, content } = req.body;
-
-        const log = new Log({
-            userId,
-            type,
-            content,
-            timestamp: new Date()
-        });
-
-        await log.save();
-        res.status(201).json(log);
-    } catch (error) {
-        res.status(500).json({ error: 'Error creating log entry' });
-    }
-}
+    res.status(200).json({ success: true, message: 'Logging disabled' });
+};
 
 exports.GetLogs = async (req, res) => {
-    try {
-        const {
-            page = 1,
-            limit = 10,
-            userId,
-            type,
-            startDate,
-            endDate
-        } = req.query;
-
-        const query = {};
-
-        if (userId) query.userId = userId;
-        if (type) query.type = type;
-        if (startDate || endDate) {
-            query.timestamp = {};
-            if (startDate) query.timestamp.$gte = new Date(startDate);
-            if (endDate) query.timestamp.$lte = new Date(endDate);
-        }
-
-        let logQuery = Log.find(query).sort({ timestamp: -1 });
-        
-        if (Object.keys(query).length === 0) {
-            logQuery = logQuery.hint({ timestamp: 1 });
-        }
-
-        const logs = await logQuery
-            .skip((page - 1) * limit)
-            .limit(parseInt(limit));
-
-        let total;
-        if (Object.keys(query).length === 0) {
-            total = await Log.estimatedDocumentCount();
-        } else {
-            total = await Log.countDocuments(query);
-        }
-
-        res.json({
-            logs,
-            total,
-            pages: Math.ceil(total / limit),
-            currentPage: parseInt(page)
-        });
-    } catch (error) {
-        res.status(500).json({ error: 'Error fetching logs' });
-    }
-}
+    res.json({
+        logs: [],
+        total: 0,
+        pages: 0,
+        currentPage: 1
+    });
+};
