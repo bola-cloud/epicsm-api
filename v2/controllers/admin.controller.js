@@ -100,7 +100,8 @@ exports.getJobs = async (req, res) => {
                 { target_id: { $regex: escapeRegex(trimmed), $options: 'i' } },
                 { mediaId: { $regex: escapeRegex(trimmed), $options: 'i' } },
                 { userPk: { $regex: escapeRegex(trimmed), $options: 'i' } },
-                { jobId: { $regex: escapeRegex(trimmed), $options: 'i' } }
+                { jobId: { $regex: escapeRegex(trimmed), $options: 'i' } },
+                { creatorId: { $regex: escapeRegex(trimmed), $options: 'i' } }
             );
 
             query.$or = orConditions;
