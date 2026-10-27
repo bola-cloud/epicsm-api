@@ -75,25 +75,11 @@ exports.broadcastNotification = async (req, res) => {
             notificationPayload.imageUrl = imageUrl.trim();
         }
 
-        // --- 1. Broadcast via FCM Topic: 'all_users' ---
-        let topicSuccess = false;
-        try {
-            await admin.messaging().send({
-                topic: 'all_users',
-                notification: notificationPayload,
-                data: {
-                    type: 'broadcast',
-                    click_action: 'FLUTTER_NOTIFICATION_CLICK',
-                    timestamp: new Date().toISOString()
-                }
-            });
-            topicSuccess = true;
-            console.log('[NotificationController] Sent broadcast to topic: all_users');
-        } catch (topicErr) {
-            console.warn('[NotificationController] Topic send note:', topicErr.message);
-        }
+        const { sendMethod } = req.body;
+        // Default to topic broadcast ('all_users') as recommended by FCM to prevent duplicates
+        const method = sendMethod === 'tokens' ? 'tokens' : 'topic';
 
-        // --- 2. Broadcast via Socket.io to connected users in real time ---
+        // --- 1. Broadcast via Socket.io to connected users in real time ---
         try {
             const { getIO } = require('../../v2');
             const io = getIO();
@@ -110,63 +96,99 @@ exports.broadcastNotification = async (req, res) => {
             console.warn('[NotificationController] Socket broadcast note:', socketErr.message);
         }
 
-        // --- 3. FCM Direct Multicast to all stored tokens in MongoDB ---
-        const usersWithFcm = await User.find(
-            { fcm: { $exists: true, $nin: ['', null] } },
-            'fcm'
-        );
-
-        const rawTokens = usersWithFcm.map(u => u.fcm);
-        const uniqueTokens = [...new Set(rawTokens.filter(t => typeof t === 'string' && t.trim().length > 10))];
-
-        console.log(`[NotificationController] Preparing multicast for ${uniqueTokens.length} unique device tokens...`);
-
         let totalSuccess = 0;
         let totalFailure = 0;
-        const BATCH_SIZE = 500;
-        const batches = [];
+        let topicSuccess = false;
 
-        for (let i = 0; i < uniqueTokens.length; i += BATCH_SIZE) {
-            batches.push(uniqueTokens.slice(i, i + BATCH_SIZE));
-        }
-
-        // Process batches with concurrency of 5
-        const CONCURRENCY = 5;
-        for (let i = 0; i < batches.length; i += CONCURRENCY) {
-            const currentBatches = batches.slice(i, i + CONCURRENCY);
-            await Promise.all(
-                currentBatches.map(async (batch) => {
-                    try {
-                        const response = await admin.messaging().sendEachForMulticast({
-                            tokens: batch,
-                            notification: notificationPayload,
-                            data: {
-                                type: 'broadcast',
-                                click_action: 'FLUTTER_NOTIFICATION_CLICK',
-                                timestamp: new Date().toISOString()
-                            }
-                        });
-                        totalSuccess += response.successCount;
-                        totalFailure += response.failureCount;
-                    } catch (batchErr) {
-                        console.error('[NotificationController] Batch send error:', batchErr.message);
-                        totalFailure += batch.length;
+        // --- 2. Send via FCM: Either Topic OR Tokens (NEVER BOTH to avoid duplicate notifications) ---
+        if (method === 'topic') {
+            try {
+                const response = await admin.messaging().send({
+                    topic: 'all_users',
+                    notification: notificationPayload,
+                    data: {
+                        type: 'broadcast',
+                        click_action: 'FLUTTER_NOTIFICATION_CLICK',
+                        timestamp: new Date().toISOString()
                     }
-                })
-            );
-        }
-
-        return res.status(200).json({
-            success: true,
-            message: `تم إرسال الإشعار العام بنجاح! تم استلامه من قبل ${totalSuccess} جهاز مشترك، بالإضافة إلى قناة البث العام (Topic: all_users) وSocket.io.`,
-            stats: {
-                totalTargetTokens: uniqueTokens.length,
-                successCount: totalSuccess,
-                failureCount: totalFailure,
-                topicBroadcast: topicSuccess,
-                sentAt: new Date()
+                });
+                topicSuccess = true;
+                totalSuccess = 1;
+                console.log('[NotificationController] Sent single broadcast to topic: all_users, messageId:', response);
+            } catch (topicErr) {
+                console.error('[NotificationController] Topic send error:', topicErr.message);
+                return res.status(500).json({
+                    success: false,
+                    message: 'فشل إرسال الإشعار عبر قناة البث العام',
+                    error: topicErr.message
+                });
             }
-        });
+
+            return res.status(200).json({
+                success: true,
+                message: 'تم إرسال الإشعار العام بنجاح عبر قناة (Topic: all_users) دون تكرار!',
+                stats: {
+                    sendMethod: 'topic',
+                    topic: 'all_users',
+                    topicBroadcast: topicSuccess,
+                    sentAt: new Date()
+                }
+            });
+        } else {
+            // Direct Multicast to stored device tokens
+            const usersWithFcm = await User.find(
+                { fcm: { $exists: true, $nin: ['', null] } },
+                'fcm'
+            );
+
+            const rawTokens = usersWithFcm.map(u => u.fcm);
+            const uniqueTokens = [...new Set(rawTokens.filter(t => typeof t === 'string' && t.trim().length > 10))];
+
+            console.log(`[NotificationController] Preparing direct multicast for ${uniqueTokens.length} unique device tokens...`);
+
+            const BATCH_SIZE = 500;
+            const batches = [];
+            for (let i = 0; i < uniqueTokens.length; i += BATCH_SIZE) {
+                batches.push(uniqueTokens.slice(i, i + BATCH_SIZE));
+            }
+
+            const CONCURRENCY = 5;
+            for (let i = 0; i < batches.length; i += CONCURRENCY) {
+                const currentBatches = batches.slice(i, i + CONCURRENCY);
+                await Promise.all(
+                    currentBatches.map(async (batch) => {
+                        try {
+                            const response = await admin.messaging().sendEachForMulticast({
+                                tokens: batch,
+                                notification: notificationPayload,
+                                data: {
+                                    type: 'broadcast',
+                                    click_action: 'FLUTTER_NOTIFICATION_CLICK',
+                                    timestamp: new Date().toISOString()
+                                }
+                            });
+                            totalSuccess += response.successCount;
+                            totalFailure += response.failureCount;
+                        } catch (batchErr) {
+                            console.error('[NotificationController] Batch send error:', batchErr.message);
+                            totalFailure += batch.length;
+                        }
+                    })
+                );
+            }
+
+            return res.status(200).json({
+                success: true,
+                message: `تم إرسال الإشعار بنجاح إلى ${totalSuccess} جهاز عبر الرموز المباشرة (Tokens)!`,
+                stats: {
+                    sendMethod: 'tokens',
+                    totalTargetTokens: uniqueTokens.length,
+                    successCount: totalSuccess,
+                    failureCount: totalFailure,
+                    sentAt: new Date()
+                }
+            });
+        }
     } catch (error) {
         console.error('[NotificationController] Error in broadcastNotification:', error);
         return res.status(500).json({

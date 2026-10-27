@@ -29,6 +29,26 @@ const PromotionSchema = new mongoose.Schema({
         type: String,
         default: '100'
     },
+    startDate: {
+        type: String,
+        default: null // format: YYYY-MM-DD
+    },
+    endDate: {
+        type: String,
+        default: null // format: YYYY-MM-DD
+    },
+    startAt: {
+        type: Date,
+        default: null // UTC timestamp
+    },
+    endAt: {
+        type: Date,
+        default: null // UTC timestamp
+    },
+    isRecurring: {
+        type: Boolean,
+        default: false
+    },
     createdAt: {
         type: Date,
         default: Date.now

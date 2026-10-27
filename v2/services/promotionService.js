@@ -2,55 +2,92 @@ const Promotion = require('../../models/promotion');
 
 class PromotionService {
     /**
-     * Compute UTC Date instances for a given HH:MM start/end in a specific timezone
+     * Parse date (YYYY-MM-DD) and time (HH:MM) accurately in target timezone into UTC Date
      */
-    static calculateTimes(startStr, endStr, tz = 'Africa/Cairo') {
+    static parseDateTimeInTz(dateStr, timeStr, tz = 'Africa/Cairo') {
         try {
-            const [sH, sM] = (startStr || '16:00').split(':').map(Number);
-            const [eH, eM] = (endStr || '17:00').split(':').map(Number);
+            const [year, month, day] = (dateStr || '').split('-').map(Number);
+            const [hour, minute] = (timeStr || '16:00').split(':').map(Number);
 
-            const now = new Date();
-            const tzFormatter = new Intl.DateTimeFormat('en-CA', {
+            const guessUtc = new Date(Date.UTC(year, month - 1, day, hour, minute, 0));
+
+            const tzFormatter = new Intl.DateTimeFormat('en-US', {
                 timeZone: tz,
-                year: 'numeric',
-                month: '2-digit',
-                day: '2-digit',
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit',
+                year: 'numeric', month: 'numeric', day: 'numeric',
+                hour: 'numeric', minute: 'numeric', second: 'numeric',
                 hour12: false
             });
 
-            const parts = tzFormatter.formatToParts(now).reduce((acc, p) => {
+            const parts = tzFormatter.formatToParts(guessUtc).reduce((acc, p) => {
                 acc[p.type] = p.value;
                 return acc;
             }, {});
 
-            const year = parseInt(parts.year, 10);
-            const month = parseInt(parts.month, 10);
-            const day = parseInt(parts.day, 10);
+            const tzYear = parseInt(parts.year, 10);
+            const tzMonth = parseInt(parts.month, 10);
+            const tzDay = parseInt(parts.day, 10);
+            let tzHour = parseInt(parts.hour, 10);
+            if (tzHour === 24) tzHour = 0;
+            const tzMin = parseInt(parts.minute, 10);
 
-            const utcDate = new Date(now.toLocaleString('en-US', { timeZone: 'UTC' }));
-            const targetDate = new Date(now.toLocaleString('en-US', { timeZone: tz }));
-            const tzOffsetMinutes = Math.round((targetDate.getTime() - utcDate.getTime()) / (60 * 1000));
+            const tzAsUtc = Date.UTC(tzYear, tzMonth - 1, tzDay, tzHour, tzMin, 0);
+            const offsetMs = tzAsUtc - guessUtc.getTime();
 
-            const startUtcMs = Date.UTC(year, month - 1, day, sH, sM, 0) - (tzOffsetMinutes * 60 * 1000);
-            const endUtcMs = Date.UTC(year, month - 1, day, eH, eM, 0) - (tzOffsetMinutes * 60 * 1000);
+            return new Date(guessUtc.getTime() - offsetMs);
+        } catch (error) {
+            console.error('[PromotionService] parseDateTimeInTz error:', error);
+            return new Date();
+        }
+    }
 
-            let startUtc = new Date(startUtcMs);
-            let endUtc = new Date(endUtcMs);
+    /**
+     * Compute UTC Date instances for a promotion
+     */
+    static calculatePromoTimes(promo) {
+        try {
+            const tz = promo.timezone || 'Africa/Cairo';
 
-            // Handle midnight span (e.g. 23:00 to 02:00)
-            if (endUtc <= startUtc) {
-                endUtc = new Date(endUtcMs + 24 * 60 * 60 * 1000);
+            // If already pre-computed and stored as UTC dates in DB
+            if (promo.startAt && promo.endAt) {
+                return {
+                    startUtc: new Date(promo.startAt),
+                    endUtc: new Date(promo.endAt),
+                    tz
+                };
             }
 
-            return { startUtc, endUtc };
+            let sDate = promo.startDate;
+            let eDate = promo.endDate || sDate;
+
+            // If no specific date was set (legacy promo), use today's date in target timezone
+            if (!sDate) {
+                const now = new Date();
+                const parts = new Intl.DateTimeFormat('en-CA', {
+                    timeZone: tz,
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit'
+                }).format(now);
+                sDate = parts;
+                eDate = parts;
+            }
+
+            const sTime = promo.start || '16:00';
+            const eTime = promo.end || '17:00';
+
+            const startUtc = this.parseDateTimeInTz(sDate, sTime, tz);
+            let endUtc = this.parseDateTimeInTz(eDate, eTime, tz);
+
+            if (endUtc <= startUtc) {
+                endUtc = new Date(endUtc.getTime() + 24 * 60 * 60 * 1000);
+            }
+
+            return { startUtc, endUtc, tz };
         } catch (error) {
-            console.error('[PromotionService] calculateTimes error:', error);
+            console.error('[PromotionService] calculatePromoTimes error:', error);
             const fallbackStart = new Date(Date.now() + 60 * 60 * 1000);
             const fallbackEnd = new Date(Date.now() + 2 * 60 * 60 * 1000);
-            return { startUtc: fallbackStart, endUtc: fallbackEnd };
+            return { startUtc: fallbackStart, endUtc: fallbackEnd, tz: 'Africa/Cairo' };
         }
     }
 
@@ -67,9 +104,7 @@ class PromotionService {
             const now = new Date();
 
             for (const promo of activePromos) {
-                if (!promo.start || !promo.end) continue;
-                const tz = promo.timezone || 'Africa/Cairo';
-                const { startUtc, endUtc } = this.calculateTimes(promo.start, promo.end, tz);
+                const { startUtc, endUtc, tz } = this.calculatePromoTimes(promo);
 
                 if (now >= startUtc && now < endUtc) {
                     const rewardValue = promo.rewardValue || parseInt(promo.promotion_settings, 10) || 100;
@@ -80,11 +115,14 @@ class PromotionService {
                         rewardValue: rewardValue,
                         rewardAmount: rewardValue,
                         amount: rewardValue,
+                        startDate: promo.startDate || null,
+                        endDate: promo.endDate || null,
                         start: promo.start,
                         end: promo.end,
                         startAt: startUtc.toISOString(),
                         endAt: endUtc.toISOString(),
-                        timezone: tz
+                        timezone: tz,
+                        isRecurring: Boolean(promo.isRecurring)
                     };
                 }
             }
@@ -98,6 +136,8 @@ class PromotionService {
 
     /**
      * Get the next upcoming active promotion
+     * Fix: NEVER returns tomorrow's duplicate for a promotion that is currently active today!
+     * Fix: Expired one-time promotions are NOT returned as upcoming.
      */
     static async getUpcomingPromotion() {
         try {
@@ -111,37 +151,64 @@ class PromotionService {
             let minDiffMs = Infinity;
 
             for (const promo of activePromos) {
-                if (!promo.start || !promo.end) continue;
-                const tz = promo.timezone || 'Africa/Cairo';
-                const { startUtc, endUtc } = this.calculateTimes(promo.start, promo.end, tz);
+                const { startUtc, endUtc, tz } = this.calculatePromoTimes(promo);
 
-                let upcomingStart = startUtc;
-                let upcomingEnd = endUtc;
-
-                // If this window already ended today, the next occurrence is tomorrow
-                if (now >= endUtc) {
-                    upcomingStart = new Date(startUtc.getTime() + 24 * 60 * 60 * 1000);
-                    upcomingEnd = new Date(endUtc.getTime() + 24 * 60 * 60 * 1000);
-                }
-
-                // If currently running, upcoming could also be tomorrow
+                // 1. If currently active right now, DO NOT return it as upcoming!
                 if (now >= startUtc && now < endUtc) {
-                    upcomingStart = new Date(startUtc.getTime() + 24 * 60 * 60 * 1000);
-                    upcomingEnd = new Date(endUtc.getTime() + 24 * 60 * 60 * 1000);
+                    continue;
                 }
 
-                const diff = upcomingStart.getTime() - now.getTime();
-                if (diff > 0 && diff < minDiffMs) {
-                    minDiffMs = diff;
-                    const rewardValue = promo.rewardValue || parseInt(promo.promotion_settings, 10) || 100;
-                    nearestUpcoming = {
-                        title: promo.title || 'Happy Hour',
-                        startAt: upcomingStart.toISOString(),
-                        endAt: upcomingEnd.toISOString(),
-                        rewardAmount: rewardValue,
-                        rewardValue: rewardValue,
-                        timezone: tz
-                    };
+                // 2. If it already ended in the past:
+                if (now >= endUtc) {
+                    // Only if explicitly configured as recurring daily do we roll over to tomorrow
+                    if (promo.isRecurring) {
+                        const tomorrowStart = new Date(startUtc.getTime() + 24 * 60 * 60 * 1000);
+                        const tomorrowEnd = new Date(endUtc.getTime() + 24 * 60 * 60 * 1000);
+                        const diff = tomorrowStart.getTime() - now.getTime();
+                        if (diff > 0 && diff < minDiffMs) {
+                            minDiffMs = diff;
+                            const rewardValue = promo.rewardValue || parseInt(promo.promotion_settings, 10) || 100;
+                            nearestUpcoming = {
+                                id: promo._id,
+                                title: promo.title || 'Happy Hour',
+                                startDate: promo.startDate || null,
+                                endDate: promo.endDate || null,
+                                start: promo.start,
+                                end: promo.end,
+                                startAt: tomorrowStart.toISOString(),
+                                endAt: tomorrowEnd.toISOString(),
+                                rewardAmount: rewardValue,
+                                rewardValue: rewardValue,
+                                timezone: tz,
+                                isRecurring: true
+                            };
+                        }
+                    }
+                    // If not recurring, it has expired! Do not show as upcoming.
+                    continue;
+                }
+
+                // 3. If start is in the future (startUtc > now) -> This is genuinely upcoming!
+                if (startUtc > now) {
+                    const diff = startUtc.getTime() - now.getTime();
+                    if (diff < minDiffMs) {
+                        minDiffMs = diff;
+                        const rewardValue = promo.rewardValue || parseInt(promo.promotion_settings, 10) || 100;
+                        nearestUpcoming = {
+                            id: promo._id,
+                            title: promo.title || 'Happy Hour',
+                            startDate: promo.startDate || null,
+                            endDate: promo.endDate || null,
+                            start: promo.start,
+                            end: promo.end,
+                            startAt: startUtc.toISOString(),
+                            endAt: endUtc.toISOString(),
+                            rewardAmount: rewardValue,
+                            rewardValue: rewardValue,
+                            timezone: tz,
+                            isRecurring: Boolean(promo.isRecurring)
+                        };
+                    }
                 }
             }
 
