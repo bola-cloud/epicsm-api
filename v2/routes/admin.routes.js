@@ -19,6 +19,7 @@ router.post('/jobs/pause-all', adminController.pauseAllJobs);
 // --- Cookies & Extraction ---
 router.post('/cookies', adminController.saveCookies);
 router.get('/cookies', adminController.getCookiesStatus);
+router.get('/cookies-health', adminController.getCookiesHealth);
 router.get('/users-with-cookies', adminController.getUsersWithCookies);
 router.get('/extraction-account', adminController.getExtractionAccount);
 router.post('/extraction-account', adminController.setExtractionAccount);

@@ -212,6 +212,88 @@ exports.getCookiesStatus = async (req, res) => {
     }
 };
 
+exports.getCookiesHealth = async (req, res) => {
+    try {
+        const platforms = ['facebook', 'instagram'];
+        const results = [];
+
+        for (const platform of platforms) {
+            const adminCookie = await AdminCookie.findOne({ platform });
+            const extractionAccount = await ExtractionAccount.findOne({ platform });
+            const isConfigured = Boolean((adminCookie && adminCookie.cookieString) || (extractionAccount && extractionAccount.userId));
+
+            const totalJobs = await JobV2.countDocuments({ platform });
+            const resolvedCount = await JobV2.countDocuments({ platform, resolutionStatus: 'resolved' });
+            const fallbackCount = await JobV2.countDocuments({ platform, resolutionStatus: { $in: ['fallback', 'failed'] } });
+
+            const recentJobs = await JobV2.find({ platform })
+                .sort({ createdAt: -1 })
+                .limit(10)
+                .select('jobId targetLink resolutionStatus resolutionError createdAt')
+                .lean();
+
+            let consecutiveFailures = 0;
+            for (const j of recentJobs) {
+                if (j.resolutionStatus === 'fallback' || j.resolutionStatus === 'failed') {
+                    consecutiveFailures++;
+                } else if (j.resolutionStatus === 'resolved') {
+                    break;
+                }
+            }
+
+            const lastResolved = await JobV2.findOne({ platform, resolutionStatus: 'resolved' })
+                .sort({ createdAt: -1 })
+                .select('createdAt')
+                .lean();
+
+            const lastFallback = await JobV2.findOne({ platform, resolutionStatus: { $in: ['fallback', 'failed'] } })
+                .sort({ createdAt: -1 })
+                .select('jobId targetLink resolutionError createdAt')
+                .lean();
+
+            let healthStatus = 'healthy';
+            let message = 'الكوكيز تعمل بكفاءة ومستقرة تماماً.';
+
+            if (!isConfigured) {
+                healthStatus = 'not_configured';
+                message = 'لم يتم تعيين كوكيز أو حساب استخراج لهذه المنصة.';
+            } else if (consecutiveFailures >= 3) {
+                healthStatus = 'critical';
+                const timeStr = lastFallback ? new Date(lastFallback.createdAt).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }) : '';
+                message = `تحذير: آخر ${consecutiveFailures} طلبات متتالية فشلت منذ الساعة ${timeStr} - الكوكيز غالباً انتهت صلاحيتها ويرجى تجديدها.`;
+            } else if (consecutiveFailures > 0 || fallbackCount > 0) {
+                healthStatus = 'isolated_issue';
+                const dateStr = lastFallback ? (new Date(lastFallback.createdAt).toLocaleDateString('ar-EG') + ' ' + new Date(lastFallback.createdAt).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })) : '';
+                const successPct = totalJobs > 0 ? ((resolvedCount / totalJobs) * 100).toFixed(1) : '100';
+                message = `يوجد طلب فردي لم يستخرج المعرف بتاريخ ${dateStr}، بينما باقي الطلبات ناجحة بنسبة ${successPct}% (العيب في رابط خاص أو غير صالح من المستخدم وليس في الكوكيز).`;
+            }
+
+            results.push({
+                platform,
+                isConfigured,
+                totalJobs,
+                resolvedCount,
+                fallbackCount,
+                successRate: totalJobs > 0 ? Number(((resolvedCount / totalJobs) * 100).toFixed(1)) : 100,
+                consecutiveFailures,
+                lastSuccessAt: lastResolved ? lastResolved.createdAt : null,
+                lastFallback: lastFallback ? {
+                    jobId: lastFallback.jobId,
+                    targetLink: lastFallback.targetLink,
+                    error: lastFallback.resolutionError,
+                    createdAt: lastFallback.createdAt
+                } : null,
+                healthStatus,
+                message
+            });
+        }
+
+        res.status(200).json(results);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
 // GET /api/v4/admin/v2/users-with-cookies?platform=facebook
 exports.getUsersWithCookies = async (req, res) => {
     try {
