@@ -34,6 +34,7 @@ function formatV2Job(j) {
         country: j.country || 'all',
         resolutionStatus: j.resolutionStatus || 'resolved',
         resolutionError: j.resolutionError || null,
+        isFallback: Boolean(isFallback),
         executionMethod: isFallback ? 'رابط مباشر (Fallback)' : (resolvedId ? 'سكربت آلي (Script Resolved)' : 'نظام V2 الذكي'),
         target_id: j.target_id,
         mediaId: j.mediaId,
