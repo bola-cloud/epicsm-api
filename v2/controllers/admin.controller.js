@@ -444,3 +444,43 @@ exports.pauseAllJobs = async (req, res) => {
         res.status(500).json({ message: error.message });
     }
 };
+
+exports.bulkPauseJobs = async (req, res) => {
+    try {
+        const { jobIds } = req.body;
+        if (!Array.isArray(jobIds) || jobIds.length === 0) {
+            return res.status(400).json({ message: "jobIds array is required" });
+        }
+        const result = await JobV2.updateMany(
+            { _id: { $in: jobIds } },
+            { $set: { status: 'Paused' } }
+        );
+        res.status(200).json({
+            success: true,
+            message: `Successfully paused ${result.modifiedCount} jobs.`,
+            modifiedCount: result.modifiedCount
+        });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+exports.bulkResumeJobs = async (req, res) => {
+    try {
+        const { jobIds } = req.body;
+        if (!Array.isArray(jobIds) || jobIds.length === 0) {
+            return res.status(400).json({ message: "jobIds array is required" });
+        }
+        const result = await JobV2.updateMany(
+            { _id: { $in: jobIds } },
+            { $set: { status: 'Active' } }
+        );
+        res.status(200).json({
+            success: true,
+            message: `Successfully activated ${result.modifiedCount} jobs.`,
+            modifiedCount: result.modifiedCount
+        });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};

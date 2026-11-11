@@ -138,14 +138,24 @@ exports.GetLatestJobs = async (req, res) => {
             return res.status(401).json({ message: 'Unauthorized' });
         }
 
-        const v1Jobs = await Job.find().sort({ createdAt: -1 }).limit(10).lean();
-        const mappedV1 = v1Jobs.map(j => ({
+        const [v1Jobs, v2Jobs] = await Promise.all([
+            Job.find().sort({ createdAt: -1 }).limit(10).lean(),
+            JobV2.find().sort({ createdAt: -1 }).limit(10).lean()
+        ]);
+
+        const mappedV1 = (v1Jobs || []).map(j => ({
             ...j,
             version: 'V1',
             isV2: false
         }));
 
-        res.status(200).json(mappedV1);
+        const mappedV2 = (v2Jobs || []).map(j => formatV2Job(j)).filter(Boolean);
+
+        const combined = [...mappedV1, ...mappedV2]
+            .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+            .slice(0, 10);
+
+        res.status(200).json(combined);
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -155,9 +165,14 @@ exports.GetJobsByPlatform = async (req, res) => {
     try {
         const { platform } = req.params;
         const platRegex = new RegExp(`^${platform}$`, 'i');
-        const v1Jobs = await Job.find({ platform: platRegex }).sort({ createdAt: -1 }).lean();
-        const mappedV1 = v1Jobs.map(j => ({ ...j, version: 'V1', isV2: false }));
-        res.status(200).json(mappedV1);
+        const [v1Jobs, v2Jobs] = await Promise.all([
+            Job.find({ platform: platRegex }).sort({ createdAt: -1 }).limit(50).lean(),
+            JobV2.find({ platform: platRegex }).sort({ createdAt: -1 }).limit(50).lean()
+        ]);
+        const mappedV1 = (v1Jobs || []).map(j => ({ ...j, version: 'V1', isV2: false }));
+        const mappedV2 = (v2Jobs || []).map(j => formatV2Job(j)).filter(Boolean);
+        const combined = [...mappedV1, ...mappedV2].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+        res.status(200).json(combined);
     } catch (error) {
         res.status(500).json({ message: error.message });
     }

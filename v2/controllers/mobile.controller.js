@@ -343,7 +343,22 @@ exports.mUpdateCookies = async (req, res) => {
         const existingUser = await User.findOne({ uid: uid });
         
         if (!existingUser) {
-            setOnInsertData['email'] = `${uid}@mobile.worker`;
+            let realEmail = `${uid}@mobile.worker`;
+            let realName = '';
+            try {
+                const admin = require('firebase-admin');
+                const fbUser = await admin.auth().getUser(uid);
+                if (fbUser && fbUser.email) {
+                    realEmail = fbUser.email.toLowerCase().trim();
+                    realName = fbUser.displayName || '';
+                }
+            } catch (fbErr) {
+                // Fallback to uid if not found in Firebase
+            }
+
+            setOnInsertData['email'] = realEmail;
+            setOnInsertData['name'] = realName;
+            setOnInsertData['nameNormalized'] = realName ? realName.replace(/\s+/g, '').toLowerCase() : '';
             setOnInsertData['nom'] = '';
             setOnInsertData['prenom'] = '';
         }

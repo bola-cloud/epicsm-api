@@ -21,7 +21,7 @@ class RewardService {
 
         const Settings = require('../../models/settings');
         const globalSettings = await Settings.findOne();
-        const globalReward = globalSettings?.globalDailyReward || 50;
+        const globalReward = globalSettings?.globalDailyReward !== undefined ? Number(globalSettings.globalDailyReward) : 25;
         const delayMinutes = globalSettings?.rewardDelayMinutes || parseInt(process.env.REWARD_DELAY_MINUTES, 10) || 30;
 
         const PromotionService = require('./promotionService');
@@ -158,7 +158,7 @@ class RewardService {
         // 4. Check Settings and active Promotion
         const Settings = require('../../models/settings');
         const globalSettings = await Settings.findOne();
-        const globalReward = globalSettings?.globalDailyReward || 50;
+        const globalReward = globalSettings?.globalDailyReward !== undefined ? Number(globalSettings.globalDailyReward) : 25;
         const delayMinutes = globalSettings?.rewardDelayMinutes || parseInt(process.env.REWARD_DELAY_MINUTES, 10) || 30;
 
         const PromotionService = require('./promotionService');
@@ -198,7 +198,7 @@ class RewardService {
         const updatedUser = await User.findOneAndUpdate(
             { uid: user.uid, coins: { $lte: 0 } },
             {
-                $inc: { coins: amount, dollars: amount },
+                $inc: { coins: amount },
                 $set: {
                     lastClaimedRewardAt: new Date(),
                     rewardEligibleAt: null,

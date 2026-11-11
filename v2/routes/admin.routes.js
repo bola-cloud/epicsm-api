@@ -14,6 +14,8 @@ router.get('/jobs/:id', adminController.getJobById);
 router.put('/jobs/:id/status', adminController.updateJobStatus);
 router.delete('/jobs/:id', adminController.deleteJob);
 router.post('/jobs/bulk-delete', adminController.bulkDeleteJobs);
+router.post('/jobs/bulk-pause', adminController.bulkPauseJobs);
+router.post('/jobs/bulk-resume', adminController.bulkResumeJobs);
 router.post('/jobs/pause-all', adminController.pauseAllJobs);
 
 // --- Cookies & Extraction ---

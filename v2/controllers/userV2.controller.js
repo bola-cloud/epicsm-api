@@ -25,13 +25,30 @@ exports.mGetProfile = async (req, res) => {
             return res.status(404).json({ success: false, message: 'User not found' });
         }
 
+        // Auto-heal dummy emails (@mobile.worker or @temporary.com) from Firebase Auth
+        if (user.email && (user.email.endsWith('@mobile.worker') || user.email.endsWith('@temporary.com'))) {
+            try {
+                const admin = require('firebase-admin');
+                const fbUser = await admin.auth().getUser(user.uid);
+                if (fbUser && fbUser.email) {
+                    const realEmail = fbUser.email.toLowerCase().trim();
+                    const realName = fbUser.displayName || user.name;
+                    user.email = realEmail;
+                    user.name = realName;
+                    await User.updateOne({ _id: user._id }, { $set: { email: realEmail, name: realName } });
+                }
+            } catch (fbErr) {
+                // Ignore if not in Firebase
+            }
+        }
+
         // 2. Compute dynamic reward status based on zero-balance and countdown timer
         const rewardInfo = await RewardService.getRewardStatus(user);
 
         // Check Global Settings and Promotion for uniform reward points
         const Settings = require('../../models/settings');
         const globalSettings = await Settings.findOne();
-        const globalReward = globalSettings?.globalDailyReward || 50;
+        const globalReward = globalSettings?.globalDailyReward !== undefined ? Number(globalSettings.globalDailyReward) : 25;
         const pointsPerDollar = globalSettings?.pointsPerDollar || 100;
         const userDollars = user.dollars || 0;
         const dollarsToPointsValue = Math.floor(userDollars * pointsPerDollar);
@@ -158,7 +175,7 @@ exports.mGoogleAuthSync = async (req, res) => {
         // Check Global Settings and Promotion for uniform reward points
         const Settings = require('../../models/settings');
         const globalSettings = await Settings.findOne();
-        const globalReward = globalSettings?.globalDailyReward || 50;
+        const globalReward = globalSettings?.globalDailyReward !== undefined ? Number(globalSettings.globalDailyReward) : 25;
         const pointsPerDollar = globalSettings?.pointsPerDollar || 100;
         const userDollars = user.dollars || 0;
         const dollarsToPointsValue = Math.floor(userDollars * pointsPerDollar);
@@ -247,6 +264,23 @@ exports.mUpdateFcmToken = async (req, res) => {
 
         if (!user) {
             return res.status(404).json({ success: false, message: 'User not found' });
+        }
+
+        // Auto-heal dummy emails (@mobile.worker or @temporary.com) from Firebase Auth
+        if (user.email && (user.email.endsWith('@mobile.worker') || user.email.endsWith('@temporary.com'))) {
+            try {
+                const admin = require('firebase-admin');
+                const fbUser = await admin.auth().getUser(user.uid);
+                if (fbUser && fbUser.email) {
+                    const realEmail = fbUser.email.toLowerCase().trim();
+                    const realName = fbUser.displayName || user.name;
+                    user.email = realEmail;
+                    user.name = realName;
+                    await User.updateOne({ _id: user._id }, { $set: { email: realEmail, name: realName } });
+                }
+            } catch (fbErr) {
+                // Ignore if not in Firebase
+            }
         }
 
         return res.status(200).json({

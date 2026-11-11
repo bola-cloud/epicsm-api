@@ -21,7 +21,7 @@ exports.getSettings = async (req, res) => {
                 mimicScroll: false,
                 rt: 0,
                 rrt: 0,
-                globalDailyReward: 50,
+                globalDailyReward: 25,
                 rewardDelayMinutes: 30,
                 pointsPerDollar: 100,
             });
@@ -47,7 +47,11 @@ exports.updateSettings = async (req, res) => {
         };
 
         if (globalDailyReward !== undefined) {
-            updateData.globalDailyReward = Number(globalDailyReward);
+            const rewardVal = Number(globalDailyReward);
+            updateData.globalDailyReward = rewardVal;
+            const User = require('../../models/user');
+            await User.updateMany({}, { $set: { dailyRewards: rewardVal } });
+            console.log(`[Settings] Updated globalDailyReward to ${rewardVal} and synced all users.`);
         }
         if (rewardDelayMinutes !== undefined) {
             updateData.rewardDelayMinutes = Number(rewardDelayMinutes);

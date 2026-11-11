@@ -37,7 +37,7 @@ class UserSyncService {
 
         const rawCoins = (data.coins !== undefined && data.coins !== null) ? Number(data.coins) : Number(data.dollars || 0);
         const rawDollars = (data.dollars !== undefined && data.dollars !== null) ? Number(data.dollars) : 0;
-        const dailyRewards = Number(data.dailyRewards || 50);
+        const dailyRewards = Number(data.dailyRewards || 25);
 
         return {
             uid: docId,
@@ -51,7 +51,7 @@ class UserSyncService {
             provider: data.provider || 'Google',
             coins: isNaN(rawCoins) ? 0 : rawCoins,
             dollars: isNaN(rawDollars) ? 0 : rawDollars,
-            dailyRewards: isNaN(dailyRewards) ? 50 : dailyRewards,
+            dailyRewards: isNaN(dailyRewards) ? 25 : dailyRewards,
             banned: Boolean(data.banned || false),
             isVip: Boolean(data.isVip || false),
             migratedToV2: true,
@@ -84,6 +84,9 @@ class UserSyncService {
             const updateFields = {
                 lastSignIn: new Date()
             };
+            if (cleanEmail && !cleanEmail.endsWith('@temporary.com') && !cleanEmail.endsWith('@mobile.worker')) {
+                updateFields.email = cleanEmail;
+            }
             if (fcm) updateFields.fcm = fcm;
             if (photo) updateFields.photo = photo;
             if (name) {
@@ -99,7 +102,7 @@ class UserSyncService {
         // 3. Brand new user! Create directly in MongoDB with initial points from global Settings
         const Settings = require('../../models/settings');
         const globalSettings = await Settings.findOne();
-        const initialPoints = globalSettings?.globalDailyReward !== undefined ? Number(globalSettings.globalDailyReward) : 50;
+        const initialPoints = globalSettings?.globalDailyReward !== undefined ? Number(globalSettings.globalDailyReward) : 25;
 
         user = new User({
             uid,

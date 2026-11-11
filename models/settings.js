@@ -29,7 +29,7 @@ const settingsSchema = new mongoose.Schema({
     },
     globalDailyReward: {
         type: Number,
-        default: 50
+        default: 25
     },
     rewardDelayMinutes: {
         type: Number,

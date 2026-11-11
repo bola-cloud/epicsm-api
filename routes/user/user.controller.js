@@ -32,7 +32,7 @@ exports.CreateUser = async (req, res) => {
 
         const Settings = require('../../models/settings');
         const globalSettings = await Settings.findOne();
-        const initialPoints = globalSettings?.globalDailyReward !== undefined ? Number(globalSettings.globalDailyReward) : 50;
+        const initialPoints = globalSettings?.globalDailyReward !== undefined ? Number(globalSettings.globalDailyReward) : 25;
 
         const newUser = new User({
             email,
@@ -82,7 +82,7 @@ exports.GetFirebaseUsers = async (req, res) => {
             photo: u.photo,
             dollars: u.dollars || 0,
             coins: u.coins !== undefined ? u.coins : (u.dollars || 0),
-            dailyRewards: u.dailyRewards || 50,
+            dailyRewards: u.dailyRewards || 25,
             banned: Boolean(u.banned),
             isVip: Boolean(u.isVip),
             role: u.role || 'client',
@@ -154,7 +154,7 @@ exports.SearchFirebaseUsers = async (req, res) => {
             photo: u.photo,
             dollars: u.dollars || 0,
             coins: u.coins !== undefined ? u.coins : (u.dollars || 0),
-            dailyRewards: u.dailyRewards || 50,
+            dailyRewards: u.dailyRewards || 25,
             banned: Boolean(u.banned),
             isVip: Boolean(u.isVip),
             role: u.role || 'client',
@@ -201,7 +201,7 @@ exports.GetUsersByLastSignIn = async (req, res) => {
             photo: u.photo,
             dollars: u.dollars || 0,
             coins: u.coins !== undefined ? u.coins : (u.dollars || 0),
-            dailyRewards: u.dailyRewards || 50,
+            dailyRewards: u.dailyRewards || 25,
             banned: Boolean(u.banned),
             isVip: Boolean(u.isVip),
             role: u.role || 'client',

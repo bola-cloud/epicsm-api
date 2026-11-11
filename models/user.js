@@ -75,7 +75,7 @@ const userSchema = mongoose.Schema({
     },
     dailyRewards: {
         type: Number,
-        default: 50,
+        default: 25,
     },
     banned: {
         type: Boolean,
